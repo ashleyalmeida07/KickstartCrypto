@@ -14,8 +14,8 @@ import nodemailer from 'nodemailer';
 // ── Lazy transporter factory — re-reads env vars on every call ────────────────
 function createTransporter() {
   return nodemailer.createTransport({
-    host:   process.env.SMTP_HOST   ?? 'smtp.gmail.com',
-    port:   Number(process.env.SMTP_PORT ?? 465),
+    host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT ?? 465),
     secure: process.env.SMTP_SECURE !== 'false',
     auth: {
       user: process.env.SMTP_USER ?? '',
@@ -27,12 +27,12 @@ function createTransporter() {
 const FROM = process.env.SMTP_FROM ?? 'KickstartCrypto <no-reply@kickstartcrypto.app>';
 
 // ── Brand constants ────────────────────────────────────────────────────────────
-const BRAND_COLOR   = '#00C896';
-const BG_COLOR      = '#f8fafc';
-const TEXT_COLOR    = '#09090b';
-const MUTED_COLOR   = '#64748b';
-const BORDER_COLOR  = '#e2e8f0';
-const APP_URL       = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+const BRAND_COLOR = '#00C896';
+const BG_COLOR = '#f8fafc';
+const TEXT_COLOR = '#09090b';
+const MUTED_COLOR = '#64748b';
+const BORDER_COLOR = '#e2e8f0';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 // ── Base HTML wrapper ──────────────────────────────────────────────────────────
 function emailWrapper(content: string, previewText: string): string {
@@ -91,9 +91,9 @@ async function sendEmail(to: string, subject: string, html: string) {
       subject,
       html,
     });
-    console.log(`[Email] ✅ Sent "${subject}" → ${to}`);
+    console.log(`[Email]  Sent "${subject}" → ${to}`);
   } catch (err) {
-    console.error(`[Email] ❌ Failed to send "${subject}" → ${to}:`, (err as Error).message);
+    console.error(`[Email] Failed to send "${subject}" → ${to}:`, (err as Error).message);
   }
 }
 
@@ -247,3 +247,4 @@ export async function sendContributorRefundEmail(
 
   await sendEmail(to, subject, html);
 }
+
