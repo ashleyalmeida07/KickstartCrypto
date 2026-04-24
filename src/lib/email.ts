@@ -11,15 +11,18 @@ import nodemailer from 'nodemailer';
  *   SMTP_PASS       app-password (not your account password)
  *   SMTP_FROM       "KickstartCrypto <no-reply@yourdomain.com>"
  */
-const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST   ?? 'smtp.gmail.com',
-  port:   Number(process.env.SMTP_PORT ?? 465),
-  secure: process.env.SMTP_SECURE !== 'false', // default true (port 465)
-  auth: {
-    user: process.env.SMTP_USER ?? '',
-    pass: process.env.SMTP_PASS ?? '',
-  },
-});
+// ── Lazy transporter factory — re-reads env vars on every call ────────────────
+function createTransporter() {
+  return nodemailer.createTransport({
+    host:   process.env.SMTP_HOST   ?? 'smtp.gmail.com',
+    port:   Number(process.env.SMTP_PORT ?? 465),
+    secure: process.env.SMTP_SECURE !== 'false',
+    auth: {
+      user: process.env.SMTP_USER ?? '',
+      pass: process.env.SMTP_PASS ?? '',
+    },
+  });
+}
 
 const FROM = process.env.SMTP_FROM ?? 'KickstartCrypto <no-reply@kickstartcrypto.app>';
 
@@ -77,14 +80,20 @@ function emailWrapper(content: string, previewText: string): string {
 // ── Email sending helper ───────────────────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.warn('[Email] SMTP_USER or SMTP_PASS not configured — skipping email send.');
+    console.warn('[Email] SMTP_USER or SMTP_PASS not configured — skipping.');
     return;
   }
   try {
-    await transporter.sendMail({ from: FROM, to, subject, html });
+    const transporter = createTransporter();
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM ?? FROM,
+      to,
+      subject,
+      html,
+    });
+    console.log(`[Email] ✅ Sent "${subject}" → ${to}`);
   } catch (err) {
-    // Never throw — email failures should not break the main flow
-    console.error('[Email] Failed to send:', err);
+    console.error(`[Email] ❌ Failed to send "${subject}" → ${to}:`, (err as Error).message);
   }
 }
 
@@ -199,6 +208,39 @@ export async function sendCampaignSuspendedEmail(
       please contact our support team.
     </p>
     <a href="mailto:support@kickstartcrypto.app" class="btn btn-danger">Contact Support</a>
+    <hr class="divider" />
+    <p style="font-size:13px; color:${MUTED_COLOR};">Contract: <span style="font-family:monospace;">${contractAddress}</span></p>
+  `, subject);
+
+  await sendEmail(to, subject, html);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── TEMPLATE 5: Contributor refund notification ────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+export async function sendContributorRefundEmail(
+  to: string,
+  campaignTitle: string,
+  contractAddress: string,
+  refundEth: string,
+) {
+  const subject = `Your refund for "${campaignTitle}" has been processed`;
+  const html = emailWrapper(`
+    <h1 class="title">Refund Processed</h1>
+    <p class="subtitle">Your contribution has been refunded to your wallet.</p>
+    <div class="card">
+      <div class="card-label">Campaign</div>
+      <div class="card-value">${campaignTitle}</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Amount Refunded</div>
+      <div class="card-value" style="color:${BRAND_COLOR};">${refundEth} ETH</div>
+    </div>
+    <p style="color:${MUTED_COLOR}; font-size:14px;">
+      The campaign did not reach its goal. Your full contribution has been returned to your wallet automatically.
+      It may take a few minutes to appear depending on network congestion.
+    </p>
+    <a href="${APP_URL}/explore" class="btn">Explore Other Campaigns</a>
     <hr class="divider" />
     <p style="font-size:13px; color:${MUTED_COLOR};">Contract: <span style="font-family:monospace;">${contractAddress}</span></p>
   `, subject);

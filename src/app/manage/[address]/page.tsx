@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, use, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount, useWriteContract, useReadContracts, useWaitForTransactionReceipt, useBlock } from 'wagmi';
 import { formatEther } from 'viem';
 import Link from 'next/link';
 import {
   Settings, Send, DollarSign, ArrowUpRight, Loader2, AlertCircle,
-  CheckCircle, XCircle, Clock, Info, ExternalLink, Ban,
+  CheckCircle, XCircle, Clock, Info, ExternalLink, Ban, Zap, RotateCcw,
 } from 'lucide-react';
 import { useCampaign } from '@/lib/useCampaigns';
 import { CAMPAIGN_ABI } from '@/lib/contracts';
@@ -16,23 +16,20 @@ import toast from 'react-hot-toast';
 function trunc(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}`; }
 
 interface MilestoneOnChain {
-  title:            string;
-  description:      string;
-  percentage:       number;
-  votes_for:        bigint;
-  votes_against:    bigint;
-  payout_requested: boolean;
-  payout_released:  boolean;
-  rejected:         boolean;
+  title:       string;
+  description: string;
+  percentage:  number;
+  released:    boolean;
+  index:       number;
 }
 
 export default function ManagePage({ params }: { params: Promise<{ address: string }> }) {
   const { address: contractAddress } = use(params);
-  const { address: userAddress } = useAccount();
+  const { address: userAddress }     = useAccount();
 
   const { campaign, isLoading } = useCampaign(contractAddress as `0x${string}`);
 
-  // Fetch milestone count then all milestones
+  // Fetch milestones (up to 10)
   const { data: milestonesRaw, refetch: refetchMilestones } = useReadContracts({
     contracts: Array.from({ length: 10 }, (_, i) => ({
       address:      contractAddress as `0x${string}`,
@@ -43,14 +40,15 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
     query: { enabled: !!contractAddress },
   });
 
-  const milestones: (MilestoneOnChain & { index: number })[] = [];
+  const milestones: MilestoneOnChain[] = [];
   if (milestonesRaw) {
     for (let i = 0; i < milestonesRaw.length; i++) {
       const r = milestonesRaw[i];
       if (r?.status === 'success' && Array.isArray(r.result)) {
-        const [title, description, percentage, votes_for, votes_against, payout_requested, payout_released, rejected] = r.result as [string, string, number, bigint, bigint, boolean, boolean, boolean];
-        if (!title) break; // no more milestones
-        milestones.push({ index: i, title, description, percentage, votes_for, votes_against, payout_requested, payout_released, rejected });
+        const [title, description, percentage, released] =
+          r.result as [string, string, number, boolean];
+        if (!title) break;
+        milestones.push({ index: i, title, description, percentage, released });
       }
     }
   }
@@ -59,15 +57,22 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
   const [lastTx, setLastTx] = useState<`0x${string}` | undefined>();
   const { isSuccess: txConfirmed } = useWaitForTransactionReceipt({ hash: lastTx, query: { enabled: !!lastTx } });
 
-  if (txConfirmed && lastTx) {
-    toast.success('Transaction confirmed!');
-    refetchMilestones();
-    setLastTx(undefined);
-  }
+  useEffect(() => {
+    if (txConfirmed && lastTx) {
+      toast.dismiss();
+      toast.success('Transaction confirmed!');
+      refetchMilestones();
+      setLastTx(undefined);
+    }
+  }, [txConfirmed, lastTx, refetchMilestones]);
 
   const [updateTitle, setUpdateTitle] = useState('');
   const [updateBody,  setUpdateBody]  = useState('');
   const [postingUpdate, setPostingUpdate] = useState(false);
+
+  // ── On-chain clock ──────────────────────────────────────────────────────────
+  const { data: latestBlock } = useBlock({ watch: true });
+  const onChainNow = latestBlock?.timestamp ?? BigInt(Math.floor(Date.now() / 1000));
 
   if (isLoading) {
     return (
@@ -89,59 +94,90 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
     );
   }
 
-  const isCreator  = userAddress?.toLowerCase() === campaign.creator.toLowerCase();
-  const deadlineMs = Number(campaign.deadline) * 1000;
+  const isCreator   = userAddress?.toLowerCase() === campaign.creator.toLowerCase();
+  const isEnded     = onChainNow >= campaign.deadline;
+  const secsLeft    = isEnded ? 0 : Number(campaign.deadline - onChainNow);
+  const hLeft       = Math.floor(secsLeft / 3600);
+  const mLeft       = Math.floor((secsLeft % 3600) / 60);
+  const sLeft       = secsLeft % 60;
+  const countdown   = secsLeft > 0 ? `${hLeft}h ${mLeft}m ${sLeft}s` : 'Deadline passed';
 
-  // Use the REAL on-chain block timestamp to mirror exactly what the contract checks.
-  // Date.now() can diverge from block.timestamp by minutes on testnets — causing
-  // false "still active" reverts even when the deadline has visually passed.
-  const { data: latestBlock } = useBlock({ watch: true });
-  const onChainNow = latestBlock?.timestamp ?? BigInt(Math.floor(Date.now() / 1000));
-  const isEnded    = onChainNow >= campaign.deadline;
+  // Settle is available if: goal reached (immediate) OR deadline passed
+  const canSettle      = (campaign.goalReached || isEnded) && !campaign.settled && !campaign.cancelled;
+  const canClaimRefund = (campaign.settled || isEnded) && !campaign.goalReached && !campaign.cancelled;
 
-  // Mirror the exact conditions the smart-contract checks for requestPayout:
-  // 1. block.timestamp >= deadline  ("Campaign: still active")
-  // 2. goalReached == true          ("Campaign: goal not met")
-  const canRequestPayout = isCreator && isEnded && campaign.goalReached;
+  // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const handleRequestPayout = (milestoneIndex: number) => {
-    if (!isCreator) {
-      toast.error('Only the campaign creator can request a payout.');
-      return;
-    }
-    if (!isEnded) {
-      // Show precise on-chain time remaining so user knows exactly when to retry
-      const secsLeft = Number(campaign.deadline - onChainNow);
-      const hLeft    = Math.floor(secsLeft / 3600);
-      const mLeft    = Math.floor((secsLeft % 3600) / 60);
-      const timeStr  = hLeft > 0 ? `~${hLeft}h ${mLeft}m` : `~${mLeft}m`;
-      toast.error(`Campaign still active on-chain. Deadline in ${timeStr}. Retry after it passes.`);
-      return;
-    }
-    if (!campaign.goalReached) {
-      toast.error('Goal not reached. Payouts are only available when the funding goal is met.');
-      return;
-    }
+  const handleSettle = () => {
+    if (!canSettle) return;
     writeContract(
       {
         address:      contractAddress as `0x${string}`,
         abi:          CAMPAIGN_ABI,
-        functionName: 'requestPayout',
-        args:         [BigInt(milestoneIndex)],
+        functionName: 'settle',
+        args:         [],
       },
       {
         onSuccess: (hash) => {
           setLastTx(hash);
-          toast.loading('Payout requested — awaiting confirmation', { id: 'payout-tx' });
+          toast.loading(
+            campaign.goalReached
+              ? 'Settling — sending funds to creator…'
+              : 'Settling — refunding all backers…',
+            { id: 'settle-tx' },
+          );
+          // Notify backend to update DB status + send email
+          fetch('/api/campaigns/settle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contractAddress,
+              totalContributed: campaign.totalContributed.toString(),
+              goalReached: campaign.goalReached,
+            }),
+          }).catch(e => console.warn('[settle API]', e));
         },
         onError: (e) => {
-          // Surface readable on-chain revert reasons
           const msg = e.message ?? '';
-          if (msg.includes('still active'))  toast.error('The campaign deadline has not passed on-chain yet.');
-          else if (msg.includes('goal not met')) toast.error('The funding goal has not been reached on-chain.');
-          else if (msg.includes('already requested')) toast.error('Payout already requested for this milestone.');
+          if (msg.includes('still active')) toast.error('Campaign deadline has not passed on-chain yet.');
+          else if (msg.includes('already settled')) toast.error('Campaign already settled.');
           else toast.error(msg.slice(0, 120));
         },
+      },
+    );
+  };
+
+  const handleClaimRefund = () => {
+    writeContract(
+      {
+        address:      contractAddress as `0x${string}`,
+        abi:          CAMPAIGN_ABI,
+        functionName: 'claimRefund',
+        args:         [],
+      },
+      {
+        onSuccess: (hash) => { setLastTx(hash); toast.loading('Refund submitted…', { id: 'refund-tx' }); },
+        onError: (e) => {
+          const msg = e.message ?? '';
+          if (msg.includes('nothing to refund')) toast.error('No contribution found for your wallet.');
+          else if (msg.includes('goal reached'))  toast.error('Campaign reached its goal — no refunds available.');
+          else toast.error(msg.slice(0, 120));
+        },
+      },
+    );
+  };
+
+  const handleCancel = () => {
+    writeContract(
+      {
+        address:      contractAddress as `0x${string}`,
+        abi:          CAMPAIGN_ABI,
+        functionName: 'cancel',
+        args:         [],
+      },
+      {
+        onSuccess: (hash) => { setLastTx(hash); toast.loading('Cancellation submitted…', { id: 'cancel-tx' }); },
+        onError:   (e)    => toast.error(e.message.slice(0, 120)),
       },
     );
   };
@@ -150,23 +186,17 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
     if (!updateTitle || !updateBody) return;
     setPostingUpdate(true);
     try {
-      // Encode as IPFS-style metadata stored on-chain via postUpdate()
       const metadata = JSON.stringify({ title: updateTitle, body: updateBody, timestamp: Date.now() });
       writeContract(
         {
           address:      contractAddress as `0x${string}`,
           abi:          CAMPAIGN_ABI,
           functionName: 'postUpdate',
-          args:         [metadata] as [string], // explicit cast: postUpdate takes string, not bigint like requestPayout
+          args:         [metadata] as [string],
         },
         {
-          onSuccess: (hash) => {
-            setLastTx(hash);
-            setUpdateTitle('');
-            setUpdateBody('');
-            toast.success('Update posted on-chain!');
-          },
-          onError: (e) => toast.error(e.message.slice(0, 120)),
+          onSuccess: (hash) => { setLastTx(hash); setUpdateTitle(''); setUpdateBody(''); toast.success('Update posted!'); },
+          onError:   (e)    => toast.error(e.message.slice(0, 120)),
         },
       );
     } finally {
@@ -180,15 +210,35 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-28 pb-20">
+
       {/* Suspended banner */}
       {campaign.suspended && (
-        <div className="flex items-start gap-3 p-4 mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl">
+        <div className="flex items-start gap-3 p-4 mb-6 bg-red-50 border border-red-200 text-red-700">
           <Ban className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
             <div className="font-semibold">Campaign Suspended</div>
             <div className="text-sm mt-0.5">
-              This campaign has been suspended by the platform and is not visible to the public.
+              This campaign has been suspended and is hidden from the public.
               {campaign.suspendedReason && <span> Reason: <em>{campaign.suspendedReason}</em></span>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settled banner */}
+      {campaign.settled && (
+        <div className={`flex items-start gap-3 p-4 mb-6 border ${
+          campaign.goalReached
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : 'bg-zinc-50 border-zinc-200 text-zinc-700'
+        }`}>
+          <CheckCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold">Campaign Settled</div>
+            <div className="text-sm mt-0.5">
+              {campaign.goalReached
+                ? 'Funds have been automatically sent to the creator (minus 2.5% platform fee).'
+                : 'Goal was not reached. All backers have been automatically refunded.'}
             </div>
           </div>
         </div>
@@ -208,27 +258,29 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
             <p className="text-zinc-500 text-sm mt-1">
               Creator: <span className="font-mono text-zinc-400">{trunc(campaign.creator)}</span>
               <span className="mx-2">·</span>
-              <span className={`font-semibold ${campaign.status === 'Active' ? 'text-emerald-600' : campaign.status === 'Funded' ? 'text-sky-600' : 'text-zinc-500'}`}>
-                {campaign.status}
-              </span>
+              <span className={`font-semibold ${
+                campaign.status === 'Active'   ? 'text-emerald-600' :
+                campaign.status === 'Funded'   ? 'text-sky-600' :
+                campaign.status === 'Settled'  ? 'text-emerald-700' :
+                campaign.status === 'Failed'   ? 'text-red-600' :
+                'text-zinc-500'
+              }`}>{campaign.status}</span>
             </p>
           </div>
-          <div className="flex gap-2">
-            <Link href={`/campaign/${contractAddress}`}>
-              <button className="btn-secondary flex items-center gap-2 text-sm py-2 px-4">
-                View Public Page <ArrowUpRight className="w-3.5 h-3.5" />
-              </button>
-            </Link>
-          </div>
+          <Link href={`/campaign/${contractAddress}`}>
+            <button className="btn-secondary flex items-center gap-2 text-sm py-2 px-4">
+              View Public Page <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </Link>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           {[
-            { label: 'Total Raised',   value: `${raisedEth.toFixed(3)} ETH` },
-            { label: 'Goal',           value: `${goalEth.toFixed(2)} ETH` },
-            { label: 'Backers',        value: campaign.backerCount.toString() },
-            { label: '% Funded',       value: `${Math.round(progressPct)}%` },
+            { label: 'Total Raised', value: `${raisedEth.toFixed(3)} ETH` },
+            { label: 'Goal',         value: `${goalEth.toFixed(2)} ETH` },
+            { label: 'Backers',      value: campaign.backerCount.toString() },
+            { label: '% Funded',     value: `${Math.round(progressPct)}%` },
           ].map(({ label, value }) => (
             <div key={label} className="bg-white border border-zinc-200 p-4">
               <div className="text-xl font-bold text-zinc-900 mb-0.5" style={{ fontFamily: 'var(--font-space-grotesk)' }}>{value}</div>
@@ -236,124 +288,169 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
             </div>
           ))}
         </div>
-
-        {/* Progress bar */}
-        <div className="mt-4 bg-zinc-100 h-2 rounded-full overflow-hidden">
+        <div className="mt-4 bg-zinc-100 h-2 overflow-hidden">
           <div className="h-full bg-zinc-900 transition-all duration-700" style={{ width: `${progressPct}%` }} />
         </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-7">
         {/* LEFT — actions */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-5">
 
-          {/* Payout conditions info */}
-          {isCreator && (
-            <div className={`p-4 border text-sm ${canRequestPayout ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-              <div className="font-semibold mb-2 flex items-center gap-2">
-                <Info className="w-4 h-4 shrink-0" />
-                Payout Conditions
-              </div>
-              <ul className="space-y-1 text-xs">
-                <li className="flex items-center gap-2">
-                  {isEnded ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
-                  Campaign deadline passed {!isEnded && `(${campaign.daysLeft}d remaining)`}
-                </li>
-                <li className="flex items-center gap-2">
-                  {campaign.goalReached ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> : <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                  Funding goal reached ({Math.round(progressPct)}% funded)
-                </li>
-              </ul>
-              {!canRequestPayout && (
-                <p className="text-xs mt-2 opacity-80">
-                  Both conditions must be met before requesting a payout.
-                </p>
-              )}
+          {/* ── Live On-Chain Clock ── */}
+          <div className="border border-zinc-200 bg-white p-5 text-xs space-y-2">
+            <div className="font-semibold text-zinc-700 flex items-center gap-2 mb-3">
+              <Zap className="w-3.5 h-3.5 text-sky-500" /> Live On-Chain State
             </div>
-          )}
-
-          {/* Milestones — request payout */}
-          <div className="bg-white border border-zinc-200 p-6">
-            <h2 className="font-bold text-zinc-900 mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
-              <DollarSign className="w-4 h-4 text-emerald-500" />
-              Milestones &amp; Payouts
-            </h2>
-
-            {/* How payout works */}
-            <div className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 p-3 rounded-lg mb-4 leading-relaxed">
-              <strong>How it works:</strong> Once the campaign ends and the goal is reached, request a payout for each milestone.
-              Backers vote to approve or reject. When &gt;50% of contributed ETH votes approve, funds are released automatically
-              to your wallet (minus 2.5% platform fee).
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Block timestamp</span>
+              <span className="font-mono text-zinc-800">{onChainNow.toString()}</span>
             </div>
-
-            <div className="space-y-3">
-              {milestones.map(m => {
-                const milestoneEth  = (m.percentage / 100) * raisedEth;
-                const totalVotes    = m.votes_for + m.votes_against;
-                const approvalPct   = totalVotes > 0n ? Number((m.votes_for * 100n) / totalVotes) : 0;
-                const netPayout     = milestoneEth * 0.975; // after 2.5% fee
-
-                return (
-                  <div key={m.index} className={`border p-4 ${
-                    m.payout_released ? 'border-emerald-200 bg-emerald-50' :
-                    m.rejected        ? 'border-red-200 bg-red-50' :
-                    m.payout_requested ? 'border-amber-200 bg-amber-50' :
-                    'border-zinc-200'
-                  }`}>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <span className="text-sm font-semibold text-zinc-900">{m.title}</span>
-                        <span className="text-xs text-zinc-400 ml-2">({m.percentage}%)</span>
-                      </div>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide shrink-0 ${
-                        m.payout_released ? 'bg-emerald-100 border-emerald-200 text-emerald-700' :
-                        m.rejected        ? 'bg-red-100 border-red-200 text-red-700' :
-                        m.payout_requested ? 'bg-amber-100 border-amber-200 text-amber-700' :
-                        'bg-zinc-100 border-zinc-200 text-zinc-500'
-                      }`}>
-                        {m.payout_released ? 'Released' : m.rejected ? 'Rejected' : m.payout_requested ? 'Voting' : 'Pending'}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-zinc-500 mb-3">
-                      Funds: ~{milestoneEth.toFixed(4)} ETH → You receive: ~{netPayout.toFixed(4)} ETH (after 2.5% fee)
-                    </div>
-
-                    {m.payout_requested && !m.payout_released && !m.rejected && (
-                      <div className="mb-3">
-                        <div className="flex justify-between text-xs text-zinc-500 mb-1">
-                          <span>Backer approval</span>
-                          <span>{approvalPct}%</span>
-                        </div>
-                        <div className="h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${approvalPct}%` }} />
-                        </div>
-                        <p className="text-xs text-zinc-400 mt-1">Releases automatically when &gt;50% of ETH approves</p>
-                      </div>
-                    )}
-
-                    {isCreator && canRequestPayout && !m.payout_requested && !m.payout_released && !m.rejected && (
-                      <button
-                        onClick={() => handleRequestPayout(m.index)}
-                        disabled={isPending}
-                        className="w-full py-2 text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Submitting…</> : 'Request Payout'}
-                      </button>
-                    )}
-
-                    {m.payout_released && (
-                      <div className="flex items-center gap-2 text-emerald-700 text-xs font-semibold">
-                        <CheckCircle className="w-3.5 h-3.5" /> Funds released to creator
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Deadline</span>
+              <span className="font-mono text-zinc-800">{campaign.deadline.toString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Time remaining</span>
+              <span className={`font-semibold ${isEnded ? 'text-emerald-600' : 'text-amber-600'}`}>
+                {isEnded ? '✓ Deadline passed' : countdown}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Goal reached</span>
+              <span className={campaign.goalReached ? 'text-emerald-600 font-semibold' : 'text-zinc-500'}>
+                {campaign.goalReached ? 'Yes' : 'No'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-zinc-500">Settled</span>
+              <span className={campaign.settled ? 'text-emerald-600 font-semibold' : 'text-zinc-500'}>
+                {campaign.settled ? 'Yes' : 'No'}
+              </span>
             </div>
           </div>
 
-          {/* Post Update */}
+          {/* ── Settle button — the main action ── */}
+          {canSettle && (
+            <div className={`border p-5 ${campaign.goalReached ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="flex items-start gap-2 mb-3">
+                <Info className="w-4 h-4 shrink-0 mt-0.5 text-zinc-500" />
+                <p className="text-xs text-zinc-600 leading-relaxed">
+                  {campaign.goalReached
+                    ? <><strong>Goal reached!</strong> Calling settle() will automatically send <strong>{(raisedEth * 0.975).toFixed(4)} ETH</strong> to your wallet and 2.5% fee to the platform treasury.</>
+                    : <><strong>Goal not reached.</strong> Calling settle() will automatically refund <strong>all {campaign.backerCount.toString()} backers</strong> their full contribution.</>
+                  }
+                  {' '}Anyone can trigger this.
+                </p>
+              </div>
+              <button
+                onClick={handleSettle}
+                disabled={isPending}
+                className={`w-full py-3 text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 ${
+                  campaign.goalReached
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-zinc-900 hover:bg-zinc-700 text-white'
+                }`}
+              >
+                {isPending
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+                  : <><Zap className="w-4 h-4" /> {campaign.goalReached ? 'Settle — Receive Funds' : 'Settle — Refund Backers'}</>
+                }
+              </button>
+            </div>
+          )}
+
+          {/* ── Not yet ended info ── */}
+          {!isEnded && !campaign.settled && !campaign.cancelled && (
+            <div className="border border-amber-200 bg-amber-50 p-4 text-sm">
+              <div className="flex items-start gap-2">
+                <Clock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-amber-800 mb-1">Campaign still active</div>
+                  <div className="text-xs text-amber-700">
+                    settle() becomes available when the countdown reaches zero.
+                    Anyone — creator, backer, or platform — can call it once the deadline passes.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Individual refund fallback ── */}
+          {canClaimRefund && (
+            <div className="bg-red-50 border border-red-200 p-5">
+              <h2 className="font-bold text-red-800 mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                <RotateCcw className="w-4 h-4" /> Claim Individual Refund
+              </h2>
+              <p className="text-xs text-red-700 mb-4 leading-relaxed">
+                If settle() was already called but your refund failed (e.g. smart-contract wallet), claim it here.
+              </p>
+              <button
+                onClick={handleClaimRefund}
+                disabled={isPending}
+                className="w-full py-2.5 text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Processing…</> : <><RotateCcw className="w-3.5 h-3.5" />Claim My Refund</>}
+              </button>
+            </div>
+          )}
+
+          {/* ── Milestones display (informational) ── */}
+          {milestones.length > 0 && (
+            <div className="bg-white border border-zinc-200 p-6">
+              <h2 className="font-bold text-zinc-900 mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                <DollarSign className="w-4 h-4 text-emerald-500" />
+                Milestones
+              </h2>
+              <div className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 p-3 mb-4 leading-relaxed">
+                Milestones are <strong>informational</strong>. Funds are released automatically when you call Settle after the deadline.
+              </div>
+              <div className="space-y-3">
+                {milestones.map(m => {
+                  const milestoneEth = (m.percentage / 100) * raisedEth;
+                  return (
+                    <div key={m.index} className={`border p-4 ${m.released ? 'border-emerald-200 bg-emerald-50' : 'border-zinc-200'}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="text-sm font-semibold text-zinc-900">{m.title}</span>
+                          <span className="text-xs text-zinc-400 ml-2">({m.percentage}%)</span>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide shrink-0 ${
+                          m.released ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-zinc-100 border-zinc-200 text-zinc-500'
+                        }`}>
+                          {m.released ? 'Released' : 'Pending'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-1">
+                        ~{milestoneEth.toFixed(4)} ETH (after 2.5% fee: ~{(milestoneEth * 0.975).toFixed(4)} ETH)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Cancel campaign ── */}
+          {isCreator && !isEnded && !campaign.settled && !campaign.cancelled && (
+            <div className="border border-red-100 p-4">
+              <h3 className="text-xs font-semibold text-red-700 mb-2 flex items-center gap-2">
+                <XCircle className="w-3.5 h-3.5" /> Cancel Campaign
+              </h3>
+              <p className="text-xs text-zinc-500 mb-3">
+                Cancelling before the deadline will auto-refund all backers immediately.
+              </p>
+              <button
+                onClick={handleCancel}
+                disabled={isPending}
+                className="w-full py-2 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {isPending ? 'Submitting…' : 'Cancel & Refund All Backers'}
+              </button>
+            </div>
+          )}
+
+          {/* ── Post Update ── */}
           {isCreator && (
             <div className="bg-white border border-zinc-200 p-6">
               <h2 className="font-bold text-zinc-900 mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -363,14 +460,14 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
               <div className="space-y-3">
                 <input
                   id="update-title"
-                  className="input-crypto"
+                  className="input-crypto placeholder:text-zinc-500"
                   placeholder="Update title"
                   value={updateTitle}
                   onChange={e => setUpdateTitle(e.target.value)}
                 />
                 <textarea
                   id="update-body"
-                  className="input-crypto resize-none"
+                  className="input-crypto resize-none placeholder:text-zinc-500"
                   rows={4}
                   placeholder="Share progress with your backers…"
                   value={updateBody}
@@ -379,11 +476,10 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
                 <button
                   onClick={handlePostUpdate}
                   disabled={postingUpdate || isPending || !updateTitle || !updateBody}
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isPending ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</> : 'Post Update On-Chain'}
                 </button>
-                <p className="text-xs text-center text-zinc-400">Update metadata is stored on-chain via the Campaign contract.</p>
               </div>
             </div>
           )}
@@ -404,14 +500,16 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
             </h2>
             <div className="space-y-0 divide-y divide-zinc-100">
               {[
-                { label: 'Contract',   value: contractAddress, mono: true },
-                { label: 'Creator',    value: campaign.creator, mono: true },
-                { label: 'Goal',       value: `${goalEth.toFixed(4)} ETH` },
-                { label: 'Raised',     value: `${raisedEth.toFixed(4)} ETH` },
-                { label: 'Backers',    value: campaign.backerCount.toString() },
-                { label: 'Deadline',   value: new Date(Number(campaign.deadline) * 1000).toLocaleString() },
-                { label: 'Goal Reached', value: campaign.goalReached ? 'Yes ✅' : 'No' },
-                { label: 'Cancelled',  value: campaign.cancelled ? 'Yes' : 'No' },
+                { label: 'Contract',      value: contractAddress,                                                  mono: true  },
+                { label: 'Creator',       value: campaign.creator,                                                 mono: true  },
+                { label: 'Goal',          value: `${goalEth.toFixed(4)} ETH` },
+                { label: 'Raised',        value: `${raisedEth.toFixed(4)} ETH` },
+                { label: 'Backers',       value: campaign.backerCount.toString() },
+                { label: 'Block Time',    value: new Date(Number(onChainNow) * 1000).toLocaleTimeString() },
+                { label: 'Deadline',      value: new Date(Number(campaign.deadline) * 1000).toLocaleString() },
+                { label: 'Goal Reached',  value: campaign.goalReached ? 'Yes' : 'No' },
+                { label: 'Settled',       value: campaign.settled     ? 'Yes' : 'No' },
+                { label: 'Cancelled',     value: campaign.cancelled   ? 'Yes' : 'No' },
               ].map(({ label, value, mono }) => (
                 <div key={label} className="flex justify-between items-center py-3 gap-4">
                   <span className="text-sm text-zinc-500 shrink-0">{label}</span>
@@ -425,8 +523,7 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-700 mt-4 transition-colors"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              View on Etherscan
+              <ExternalLink className="w-3.5 h-3.5" /> View on Etherscan
             </a>
           </div>
         </div>

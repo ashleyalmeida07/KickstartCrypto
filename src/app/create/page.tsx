@@ -1,5 +1,6 @@
 'use client';
 
+import { useSession } from 'next-auth/react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
@@ -40,6 +41,7 @@ const DEFAULT_FORM: FormData = {
 export default function CreatePage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
+  const { data: session } = useSession();
 
   const [step, setStep]       = useState(0);
   const [form, setForm]       = useState<FormData>(DEFAULT_FORM);
@@ -79,6 +81,7 @@ export default function CreatePage() {
         body: JSON.stringify({
           txHash,
           creatorAddress:  address,
+          creatorEmail:    session?.user?.email ?? null,
           title:           form.title,
           description:     form.shortDescription,
           category:        form.category,
@@ -158,7 +161,6 @@ export default function CreatePage() {
       args: [
         parseEther(form.goalEth),
         BigInt(form.durationDays * 86400),
-        metadataCid,
         form.milestones.map(m => m.title.trim()),
         form.milestones.map(m => m.description.trim()),
         form.milestones.map(m => Number(m.percentage)),

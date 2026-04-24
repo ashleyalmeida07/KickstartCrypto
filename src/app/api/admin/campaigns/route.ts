@@ -93,22 +93,15 @@ export async function PATCH(req: NextRequest) {
 
   // Send suspension email to creator (fire-and-forget)
   if (suspend) {
-    const campaignRow = await queryOne<{ title: string; creator_id: string | null }>(
-      `SELECT title, creator_id FROM campaigns WHERE contract_address = $1`,
+    const campaignRow = await queryOne<{ title: string; creator_email: string | null }>(
+      `SELECT title, creator_email FROM campaigns WHERE contract_address = $1`,
       [contractAddress.toLowerCase()],
     );
-    if (campaignRow?.creator_id) {
-      const creator = await queryOne<{ email: string; name: string }>(
-        `SELECT email, name FROM users WHERE id = $1`,
-        [campaignRow.creator_id],
-      );
-      if (creator?.email) {
-        sendCampaignSuspendedEmail(
-          creator.email,
-          campaignRow.title,
-          contractAddress,
-          reason ?? null,
-        );
+    if (campaignRow) {
+      const emailTo = campaignRow.creator_email ?? process.env.SMTP_USER ?? null;
+      if (emailTo) {
+        sendCampaignSuspendedEmail(emailTo, campaignRow.title, contractAddress, reason ?? null);
+        console.log(`[admin] Suspension email sent to ${emailTo}`);
       }
     }
   }

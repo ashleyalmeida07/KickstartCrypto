@@ -316,7 +316,7 @@
 	},
 	"settings": {
 		"compilationTarget": {
-			"CampaignFactory.sol": "CampaignFactory"
+			"smart_contract/CampaignFactory.sol": "CampaignFactory"
 		},
 		"evmVersion": "prague",
 		"libraries": {},
@@ -330,15 +330,15 @@
 		"remappings": []
 	},
 	"sources": {
-		"Campaign.sol": {
-			"keccak256": "0x5aef03c62c68315317d236ff1795a2c27f2b839d9ecc66bbd91e523a4f7a4875",
+		"smart_contract/Campaign.sol": {
+			"keccak256": "0xd5120105b1a886886b4cb8890ae7a0d3dd5cb127f3ae305df0197fc50ee84049",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://374be824aa09cddad7eff4a78bdca6a5b1d65e9bce618048587ced6c0c8aa617",
-				"dweb:/ipfs/QmZixr9epeZCmWKtjKWkxGEQ2uprTfGiSTY4D7NdRBWLko"
+				"bzz-raw://0df1f54646dec3f519951a65217d04f0c46bd8c1e5ab9dd8252fde21c602c981",
+				"dweb:/ipfs/QmTX53H92u9f6EHCpsGhN9syh6TzEJVkGT3FM2QAj38A3V"
 			]
 		},
-		"CampaignFactory.sol": {
+		"smart_contract/CampaignFactory.sol": {
 			"keccak256": "0xeb49575ea278131fc658559927d885d521c87bfcd6ff6d8519156b33cfad75c4",
 			"license": "MIT",
 			"urls": [

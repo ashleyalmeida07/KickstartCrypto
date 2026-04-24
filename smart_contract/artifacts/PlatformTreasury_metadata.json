@@ -184,11 +184,11 @@
 	},
 	"sources": {
 		"PlatformTreasury.sol": {
-			"keccak256": "0x6ffc9f5abd3a7c1eeefc63568e01b767e1c09236ba84d21084d95e9eb4a7fad3",
+			"keccak256": "0xd096b5fc56894bd14208ac7593710a7d2fe78fdc848f5725e8efc61c2069ecf6",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://2469060f105a48f9b4e858eca0adb934ed9a6b197369708bd792078ea533b8ea",
-				"dweb:/ipfs/QmcALoToMjTdsbPZNqAmucXmFUabkS75dJWAne5U9Z59Xx"
+				"bzz-raw://2701bd260e0000b1ab28082063b38c748734e8d328dd821cd01c660b91d5a8a5",
+				"dweb:/ipfs/QmPGkEAC15nEh2hFijxciXHV3juAJ9btGZo3ES92LZ4apm"
 			]
 		}
 	},

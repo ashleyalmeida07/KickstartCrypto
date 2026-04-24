@@ -3,6 +3,7 @@ import { createPublicClient, http, parseAbiItem } from 'viem';
 import { sepolia } from 'viem/chains';
 import { query, queryOne } from '@/lib/db';
 import { parseEther } from 'viem';
+import { sendCampaignCreatedEmail } from '@/lib/email';
 
 /**
  * POST /api/campaigns/register
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      txHash, creatorAddress, title, description,
+      txHash, creatorAddress, creatorEmail, title, description,
       category, imageUrl, goalEth, durationDays, milestones, rewardTiers,
     } = body;
 
@@ -94,18 +95,28 @@ export async function POST(req: NextRequest) {
 
     const goalWei    = parseEther(String(goalEth)).toString();
     const deadlineTs = new Date(Date.now() + Number(durationDays) * 86400 * 1000).toISOString();
+    // Use email passed from session, or fall back to wallet DB lookup
+    let resolvedEmail: string | null = creatorEmail ?? null;
+    if (!resolvedEmail) {
+      const wu = await queryOne<{ email: string | null }>(
+        `SELECT email FROM users WHERE wallet_address = $1`,
+        [creatorAddress.toLowerCase()],
+      );
+      resolvedEmail = wu?.email ?? null;
+    }
 
     const [campaign] = await query<{ id: string }>(
       `INSERT INTO campaigns
-         (contract_address, creator_id, creator_address, title,
+         (contract_address, creator_id, creator_address, creator_email, title,
           short_description, category, image_cid, goal_wei,
           deadline, deploy_tx_hash, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active')
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active')
        RETURNING id`,
       [
         contractAddress,
         user?.id ?? null,
         creatorAddress.toLowerCase(),
+        resolvedEmail,
         title,
         description ?? '',
         category ?? 'Other',
@@ -150,6 +161,32 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[register] Campaign ${contractAddress} saved to DB (id=${campaignId})`);
+
+    // ── 6. Send confirmation email to creator ───────────────────────────────
+    try {
+      // Priority: 1. Email passed from frontend session, 2. wallet DB lookup, 3. SMTP_USER fallback
+      let emailTo: string | null = creatorEmail ?? null;
+
+      if (!emailTo) {
+        const walletUser = await queryOne<{ email: string | null }>(
+          `SELECT email FROM users WHERE wallet_address = $1`,
+          [creatorAddress.toLowerCase()],
+        );
+        emailTo = walletUser?.email ?? null;
+      }
+
+      if (!emailTo) emailTo = process.env.SMTP_USER ?? null;
+
+      if (emailTo) {
+        await sendCampaignCreatedEmail(emailTo, title, contractAddress, String(goalEth));
+        console.log(`[register] Campaign created email sent to ${emailTo}`);
+      } else {
+        console.warn('[register] No email found for creator — skipping email');
+      }
+    } catch (emailErr) {
+      console.warn('[register] Email send failed (non-fatal):', emailErr);
+    }
+
     return NextResponse.json({ id: campaignId, contractAddress, message: 'created' }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/campaigns/register]', err);

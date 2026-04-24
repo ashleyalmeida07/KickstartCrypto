@@ -43,7 +43,8 @@ contract PlatformTreasury {
         uint256 toSend = _amount == 0 ? balance : _amount;
         require(toSend <= balance, "Treasury: insufficient balance");
 
-        payable(owner).transfer(toSend);
+        (bool success, ) = payable(owner).call{value: toSend}("");
+        require(success, "Treasury: transfer failed");
         emit Withdrawn(owner, toSend);
     }
 

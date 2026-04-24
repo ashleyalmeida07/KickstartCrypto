@@ -16,14 +16,14 @@ export interface OnChainCampaign {
   balance:          bigint;
   goalReached:      boolean;
   cancelled:        boolean;
+  settled:          boolean;   // NEW: true once settle() has been called
   backerCount:      bigint;
-  metadataCid:      string;
   // Derived UI fields
   goalEth:          number;
   raisedEth:        number;
   progressPercent:  number;
   daysLeft:         number;
-  status:           'Active' | 'Funded' | 'Failed' | 'Ended' | 'Cancelled';
+  status:           'Active' | 'Funded' | 'Settled' | 'Failed' | 'Cancelled';
   title:            string;
   description:      string;
   category:         string;
@@ -36,29 +36,17 @@ export interface OnChainCampaign {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function parseMetadata(raw: string): { title: string; description: string; category: string; image: string } {
-  try {
-    const p = JSON.parse(raw);
-    return {
-      title:       p.title       || 'Untitled Campaign',
-      description: p.description || '',
-      category:    p.category    || 'Other',
-      image:       p.image       || '',
-    };
-  } catch {
-    return { title: raw.slice(0, 60) || 'Campaign', description: '', category: 'Other', image: '' };
-  }
-}
-
 function deriveStatus(
-  deadline: bigint, goalReached: boolean, cancelled: boolean,
-  totalContributed: bigint, goal: bigint,
+  deadline: bigint,
+  goalReached: boolean,
+  cancelled: boolean,
+  settled: boolean,
 ): OnChainCampaign['status'] {
   if (cancelled) return 'Cancelled';
+  if (settled)   return 'Settled';
   const now = BigInt(Math.floor(Date.now() / 1000));
   if (goalReached) return 'Funded';
-  if (now > deadline && totalContributed < goal) return 'Failed';
-  if (now > deadline) return 'Ended';
+  if (now > deadline) return 'Failed';
   return 'Active';
 }
 
@@ -74,7 +62,10 @@ function buildCampaign(
   suspended = false,
   suspendedReason: string | null = null,
   existsInDb = false,
+  dbMeta?: { title?: string; description?: string; category?: string; imageUrl?: string },
 ): OnChainCampaign {
+  // New getDetails returns: creator, goal, deadline, totalContributed, balance,
+  //                          goalReached, cancelled, settled, backerCount
   const creator          = raw[0] as `0x${string}`;
   const goal             = raw[1] as bigint;
   const deadline         = raw[2] as bigint;
@@ -82,50 +73,68 @@ function buildCampaign(
   const balance          = raw[4] as bigint;
   const goalReached      = raw[5] as boolean;
   const cancelled        = raw[6] as boolean;
-  const backerCount      = raw[7] as bigint;
-  const metadataCid      = raw[8] as string;
+  const settled          = raw[7] as boolean;
+  const backerCount      = raw[8] as bigint;
 
-  const meta        = parseMetadata(metadataCid);
   const goalEth     = Number(formatEther(goal));
-  const raisedEth   = Number(formatEther(balance));
+  const raisedEth   = Number(formatEther(totalContributed));
   const progress    = goalEth > 0 ? Math.min(100, (raisedEth / goalEth) * 100) : 0;
   const fallbackImg = `https://picsum.photos/seed/${addr.slice(2, 10)}/800/400`;
 
   return {
     address: addr, creator, goal, deadline,
-    totalContributed, balance, goalReached, cancelled, backerCount, metadataCid,
+    totalContributed, balance, goalReached, cancelled, settled, backerCount,
     goalEth, raisedEth,
     progressPercent: progress,
     daysLeft:        deriveDaysLeft(deadline),
-    status:          deriveStatus(deadline, goalReached, cancelled, totalContributed, goal),
-    title:           meta.title,
-    description:     meta.description,
-    category:        meta.category,
-    imageUrl:        meta.image || fallbackImg,
+    status:          deriveStatus(deadline, goalReached, cancelled, settled),
+    title:           dbMeta?.title       ?? 'Campaign',
+    description:     dbMeta?.description ?? '',
+    category:        dbMeta?.category    ?? 'Other',
+    imageUrl:        dbMeta?.imageUrl    ?? fallbackImg,
     suspended,
     suspendedReason,
     _existsInDb:     existsInDb,
   };
 }
 
-// ─── Fetch suspension data from DB ────────────────────────────────────────────
+// ─── Fetch DB metadata + suspension data ──────────────────────────────────────
 
-interface DbSuspensionMap {
-  [address: string]: { suspended: boolean; reason: string | null; existsInDb: boolean };
+interface DbInfo {
+  suspended:        boolean;
+  reason:           string | null;
+  existsInDb:       boolean;
+  title?:           string;
+  description?:     string;
+  category?:        string;
+  imageUrl?:        string;
 }
 
-async function fetchSuspensionMap(addresses: string[]): Promise<DbSuspensionMap> {
+async function fetchDbInfo(addresses: string[]): Promise<Record<string, DbInfo>> {
   if (addresses.length === 0) return {};
   try {
-    const res = await fetch(
-      `/api/campaigns/suspension-status?addresses=${addresses.join(',')}`,
-      { next: { revalidate: 60 } } as RequestInit,
-    );
+    const res  = await fetch(`/api/campaigns/suspension-status?addresses=${addresses.join(',')}`, { next: { revalidate: 60 } } as RequestInit);
     if (!res.ok) return {};
-    const data: Array<{ contract_address: string; suspended: boolean; suspended_reason: string | null }> = await res.json();
+    const data: Array<{
+      contract_address: string;
+      suspended:        boolean;
+      suspended_reason: string | null;
+      title?:           string;
+      short_description?: string;
+      category?:        string;
+      image_cid?:       string;
+    }> = await res.json();
     return Object.fromEntries(data.map(r => [
-      r.contract_address.toLowerCase(), 
-      { suspended: r.suspended, reason: r.suspended_reason, existsInDb: true }
+      r.contract_address.toLowerCase(),
+      {
+        suspended:   r.suspended,
+        reason:      r.suspended_reason,
+        existsInDb:  true,
+        title:       r.title,
+        description: r.short_description,
+        category:    r.category,
+        imageUrl:    r.image_cid,
+      },
     ]));
   } catch {
     return {};
@@ -157,12 +166,10 @@ export function useCampaigns() {
     query: { enabled: addrs.length > 0 },
   });
 
-  const [suspensionMap, setSuspensionMap] = useState<DbSuspensionMap>({});
+  const [dbMap, setDbMap] = useState<Record<string, DbInfo>>({});
 
   useEffect(() => {
-    if (addrs.length > 0) {
-      fetchSuspensionMap(addrs).then(setSuspensionMap);
-    }
+    if (addrs.length > 0) fetchDbInfo(addrs).then(setDbMap);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addrs.join(',')]);
 
@@ -172,9 +179,9 @@ export function useCampaigns() {
       const r = rawDetails[i];
       if (r?.status === 'success' && Array.isArray(r.result)) {
         try {
-          const key  = addrs[i].toLowerCase();
-          const susp = suspensionMap[key];
-          allCampaigns.push(buildCampaign(addrs[i], r.result as readonly unknown[], susp?.suspended ?? false, susp?.reason ?? null, susp?.existsInDb ?? false));
+          const key = addrs[i].toLowerCase();
+          const db  = dbMap[key];
+          allCampaigns.push(buildCampaign(addrs[i], r.result as readonly unknown[], db?.suspended ?? false, db?.reason ?? null, db?.existsInDb ?? false, db));
         } catch (e) {
           console.warn('Failed to parse campaign', addrs[i], e);
         }
@@ -182,12 +189,12 @@ export function useCampaigns() {
     }
   }
 
-  // For Explore: hide suspended campaigns AND hide orphaned on-chain campaigns (not in DB)
+  // Explore: hide suspended + orphaned (not in DB)
   const campaigns = allCampaigns.filter(c => !c.suspended && c._existsInDb);
 
   return {
-    campaigns,          // filtered (no suspended)
-    allCampaigns,       // includes suspended (for creator's dashboard)
+    campaigns,
+    allCampaigns,
     isLoading: addrLoading || (addrs.length > 0 && detailsLoading),
     error:     addrError,
     count:     addrs.length,
@@ -221,12 +228,10 @@ export function useMyCampaigns(creatorAddress?: `0x${string}`) {
     query: { enabled: addrs.length > 0 },
   });
 
-  const [suspensionMap, setSuspensionMap] = useState<DbSuspensionMap>({});
+  const [dbMap, setDbMap] = useState<Record<string, DbInfo>>({});
 
   useEffect(() => {
-    if (addrs.length > 0) {
-      fetchSuspensionMap(addrs).then(setSuspensionMap);
-    }
+    if (addrs.length > 0) fetchDbInfo(addrs).then(setDbMap);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addrs.join(',')]);
 
@@ -236,9 +241,9 @@ export function useMyCampaigns(creatorAddress?: `0x${string}`) {
       const r = rawDetails[i];
       if (r?.status === 'success' && Array.isArray(r.result)) {
         try {
-          const key  = addrs[i].toLowerCase();
-          const susp = suspensionMap[key];
-          campaigns.push(buildCampaign(addrs[i], r.result as readonly unknown[], susp?.suspended ?? false, susp?.reason ?? null, susp?.existsInDb ?? false));
+          const key = addrs[i].toLowerCase();
+          const db  = dbMap[key];
+          campaigns.push(buildCampaign(addrs[i], r.result as readonly unknown[], db?.suspended ?? false, db?.reason ?? null, db?.existsInDb ?? false, db));
         } catch (e) {
           console.warn('Failed to parse campaign', addrs[i], e);
         }
@@ -247,7 +252,7 @@ export function useMyCampaigns(creatorAddress?: `0x${string}`) {
   }
 
   return {
-    campaigns,   // includes suspended (shown to creator with badge)
+    campaigns,
     isLoading: addrLoading || (addrs.length > 0 && detailsLoading),
     count:     addrs.length,
     refetch,
@@ -261,26 +266,22 @@ export function useCampaign(address?: `0x${string}`) {
     address,
     abi:          CAMPAIGN_ABI,
     functionName: 'getDetails',
-    query:        { enabled: !!address },
+    query:        { enabled: !!address, refetchInterval: 10_000 },
   });
 
-  const [suspensionInfo, setSuspensionInfo] = useState<{ suspended: boolean; reason: string | null; existsInDb: boolean }>({ 
-    suspended: false, reason: null, existsInDb: false 
-  });
+  const [dbInfo, setDbInfo] = useState<DbInfo>({ suspended: false, reason: null, existsInDb: false });
 
   useEffect(() => {
-    if (address) {
-      fetchSuspensionMap([address]).then(m => {
-        const s = m[address.toLowerCase()];
-        if (s) setSuspensionInfo(s);
-      });
-    }
+    if (address) fetchDbInfo([address]).then(m => {
+      const s = m[address.toLowerCase()];
+      if (s) setDbInfo(s);
+    });
   }, [address]);
 
   let campaign: OnChainCampaign | null = null;
   if (data && address && Array.isArray(data)) {
     try {
-      campaign = buildCampaign(address, data as readonly unknown[], suspensionInfo.suspended, suspensionInfo.reason, suspensionInfo.existsInDb);
+      campaign = buildCampaign(address, data as readonly unknown[], dbInfo.suspended, dbInfo.reason, dbInfo.existsInDb, dbInfo);
     } catch (e) {
       console.warn('useCampaign parse error', e);
     }

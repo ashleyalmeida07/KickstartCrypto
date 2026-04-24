@@ -225,12 +225,10 @@ function VotingTab({ address, campaigns, onConnect }: {
       for (let mi = 0; mi < 5; mi++) {
         const r = milestoneResults[ci * 5 + mi];
         if (r?.status === 'success' && Array.isArray(r.result)) {
-          const [title, , perc, , , payoutRequested, payoutReleased, rejected] =
-            r.result as [string, string, number, bigint, bigint, boolean, boolean, boolean];
+          const [title, description, perc, released] =
+            r.result as [string, string, number, boolean];
           if (!title) break;
-          if (payoutRequested && !payoutReleased && !rejected) {
-            pendingVotes.push({ campaignAddress: campaign.address, title: campaign.title, milestoneIndex: mi, milestoneTitle: title, milestonePerc: perc });
-          }
+          // Voting logic removed from contract; no pending votes to push
         }
       }
     });

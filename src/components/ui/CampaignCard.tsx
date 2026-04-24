@@ -39,7 +39,7 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
           {/* Thumbnail */}
           <div className="relative h-44 overflow-hidden bg-zinc-100 flex-shrink-0">
             <img
-              src={imageUrl}
+              src={imageUrl || `https://picsum.photos/seed/${address.slice(2, 8)}/800/400`}
               alt={title}
               className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
               onError={(e) => {
@@ -111,7 +111,7 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
             </div>
 
             {/* Meta */}
-            <div className="flex items-center justify-between text-xs text-zinc-400 border-t border-zinc-100 pt-3">
+            <div className="flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-100 pt-3">
               <span className="flex items-center gap-1">
                 <Users className="w-3 h-3" />
                 {Number(backerCount).toLocaleString()} backers
@@ -128,7 +128,7 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
             {/* Creator address */}
             <div className="mt-3 pt-3 border-t border-zinc-100 flex items-center gap-2">
               <div className="w-4 h-4 rounded-full bg-zinc-200 flex-shrink-0" />
-              <span className="text-[11px] text-zinc-400 font-mono truncate">
+              <span className="text-[11px] text-zinc-500 font-mono truncate">
                 {campaign.creator.slice(0, 6)}…{campaign.creator.slice(-4)}
               </span>
             </div>

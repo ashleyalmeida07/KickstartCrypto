@@ -7,7 +7,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadCont
 import {
   ExternalLink, Users, Clock, Shield, Share2,
   AlertCircle, CheckCircle, Loader2, RefreshCw,
-  ThumbsUp, ThumbsDown, Banknote, XCircle, Zap
+  XCircle, Zap
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatEther } from 'viem';
@@ -45,22 +45,13 @@ function TxButton({
   );
 }
 
-// ─── Milestone row with vote / request-payout buttons ────────────────────────
+// ─── Milestone row — simplified, no voting (auto-settle contract) ─────────────
 function MilestoneRow({
-  campaignAddress, index, totalContributed, isCreator, canVote, onAction, userAddress,
+  campaignAddress, index,
 }: {
   campaignAddress: `0x${string}`;
   index: number;
-  totalContributed: bigint;
-  isCreator: boolean;
-  canVote: boolean;
-  onAction: () => void;
-  userAddress?: `0x${string}`;
 }) {
-  const [txHash,     setTxHash]     = useState<`0x${string}` | undefined>(undefined);
-  const [pending,    setPending]     = useState(false);
-  const [lastVote,   setLastVote]    = useState<{ approve: boolean; weight: string } | null>(null);
-
   const { data: milestoneRaw } = useReadContract({
     address:      campaignAddress,
     abi:          CAMPAIGN_ABI,
@@ -68,62 +59,21 @@ function MilestoneRow({
     args:         [BigInt(index)],
   });
 
-  const { writeContract } = useWriteContract({
-    mutation: {
-      onSuccess: (h) => { setTxHash(h); setPending(true); toast.loading('Tx submitted!', { id: 'tx-toast' }); },
-      onError:   (e) => { setPending(false); toast.error(e.message.slice(0, 100)); },
-    },
-  });
-
-  const { isSuccess } = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
-  useEffect(() => {
-    if (isSuccess && txHash) {
-      setPending(false);
-      toast.success('Action confirmed on-chain!');
-
-      // Save vote to DB
-      if (lastVote && userAddress) {
-        fetch('/api/campaigns/vote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contractAddress:  campaignAddress,
-            milestoneIndex:   index,
-            voterAddress:     userAddress,
-            approve:          lastVote.approve,
-            weightWei:        lastVote.weight,
-            txHash,
-          }),
-        })
-          .then(r => r.json())
-          .then(d => console.log('[DB] Vote saved:', d))
-          .catch(e => console.error('[DB] Vote save failed:', e));
-      }
-
-      onAction();
-    }
-  }, [isSuccess, txHash]);
-
   if (!milestoneRaw || !Array.isArray(milestoneRaw)) {
     return <div className="h-20 bg-slate-100 rounded-xl animate-pulse" />;
   }
 
-  const [title, desc, percentage, votes_for, votes_against, payout_requested, payout_released, rejected] =
-    milestoneRaw as [string, string, number, bigint, bigint, boolean, boolean, boolean];
+  // New contract: getMilestone returns (title, description, percentage, released)
+  const [title, desc, percentage, released] =
+    milestoneRaw as [string, string, number, boolean];
 
-  const quorum     = totalContributed / 2n;
-  const forPct     = totalContributed > 0n ? Number((votes_for  * 100n) / totalContributed) : 0;
-  const againstPct = totalContributed > 0n ? Number((votes_against * 100n) / totalContributed) : 0;
-
-  const stateTag =
-    payout_released ? { label: 'Released', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700' }
-    : rejected       ? { label: 'Rejected',  cls: 'bg-red-50 border-red-200 text-red-600'             }
-    : payout_requested ? { label: 'Voting',  cls: 'bg-amber-50 border-amber-200 text-amber-700'       }
-    :                    { label: 'Pending',  cls: 'bg-slate-100 border-slate-200 text-slate-500'      };
+  const stateTag = released
+    ? { label: 'Released', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700' }
+    : { label: 'Pending',  cls: 'bg-slate-100 border-slate-200 text-slate-500'      };
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <span className="font-bold text-slate-900 text-sm" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -133,71 +83,17 @@ function MilestoneRow({
               {stateTag.label}
             </span>
           </div>
-          {desc && <p className="text-xs text-slate-500">{desc}</p>}
+          {desc && <p className="text-xs text-slate-500 mt-1">{desc}</p>}
         </div>
         <span className="text-lg font-black text-sky-600 flex-shrink-0" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
           {percentage}%
         </span>
       </div>
-
-      {/* Vote bars */}
-      {payout_requested && !payout_released && !rejected && (
-        <div className="space-y-1.5 mb-4">
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="text-emerald-600 font-semibold w-12">For</span>
-            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${forPct}%` }} />
-            </div>
-            <span className="w-8 text-right">{forPct}%</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="text-red-500 font-semibold w-12">Against</span>
-            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-red-400 rounded-full" style={{ width: `${againstPct}%` }} />
-            </div>
-            <span className="w-8 text-right">{againstPct}%</span>
-          </div>
-          <p className="text-xs text-slate-400">Quorum: &gt;50% of total contributions</p>
-        </div>
+      {released && (
+        <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1 mt-3">
+          <CheckCircle className="w-3.5 h-3.5" /> Funds automatically released to creator via settle()
+        </p>
       )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2">
-        {/* Creator: request payout */}
-        {isCreator && !payout_requested && !payout_released && !rejected && (
-          <TxButton label="Request Payout" loadingLabel="Requesting…" disabled={pending} icon={<Banknote className="w-4 h-4" />}
-            onClick={() => writeContract({ address: campaignAddress, abi: CAMPAIGN_ABI, functionName: 'requestPayout', args: [BigInt(index)] })} />
-        )}
-        {/* Backers: vote */}
-        {canVote && payout_requested && !payout_released && !rejected && (
-          <>
-            <TxButton label="Approve" loadingLabel="Voting…" disabled={pending}
-              icon={<ThumbsUp className="w-4 h-4" />}
-              onClick={() => {
-                const myWeight = totalContributed > 0n ? totalContributed.toString() : '0';
-                setLastVote({ approve: true, weight: myWeight });
-                writeContract({ address: campaignAddress, abi: CAMPAIGN_ABI, functionName: 'vote', args: [BigInt(index), true] });
-              }} />
-            <TxButton label="Reject" loadingLabel="Voting…" disabled={pending}
-              variant="danger" icon={<ThumbsDown className="w-4 h-4" />}
-              onClick={() => {
-                const myWeight = totalContributed > 0n ? totalContributed.toString() : '0';
-                setLastVote({ approve: false, weight: myWeight });
-                writeContract({ address: campaignAddress, abi: CAMPAIGN_ABI, functionName: 'vote', args: [BigInt(index), false] });
-              }} />
-          </>
-        )}
-        {payout_released && (
-          <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-            <CheckCircle className="w-4 h-4" /> Funds released to creator
-          </span>
-        )}
-        {rejected && (
-          <span className="text-xs text-red-500 font-semibold flex items-center gap-1">
-            <XCircle className="w-4 h-4" /> Milestone rejected — refunds available
-          </span>
-        )}
-      </div>
     </div>
   );
 }
@@ -287,7 +183,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
       {/* Hero banner */}
       <div className="relative h-64 sm:h-80 overflow-hidden bg-gradient-to-br from-sky-100 to-purple-100">
         <img
-          src={campaign.imageUrl}
+          src={campaign.imageUrl || `https://picsum.photos/seed/${addr.slice(2, 10)}/1200/400`}
           alt={campaign.title}
           className="w-full h-full object-cover"
           onError={e => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${addr.slice(2, 10)}/1200/400`; }}
@@ -414,18 +310,13 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                   ) : (
                     <>
                       <p className="text-xs text-slate-500 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-                        📋 Creator requests milestone payout → Backers vote → Funds release if &gt;50% approve
+                        📋 Milestones are informational. To receive funds, the Creator must go to their <strong>Manage Dashboard</strong> and click <strong>Settle</strong> once the goal is reached or the deadline passes.
                       </p>
                       {milestones.map(idx => (
                         <MilestoneRow
-                          key={`${idx}-${refreshKey}`}
+                          key={idx}
                           campaignAddress={addr}
                           index={idx}
-                          totalContributed={campaign.totalContributed}
-                          isCreator={!!isCreator}
-                          canVote={isBacker}
-                          onAction={refresh}
-                          userAddress={userAddress}
                         />
                       ))}
                     </>
@@ -496,7 +387,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                     <div className="border-t border-slate-100 pt-5">
                       <p className="text-xs text-slate-500 mb-3">⚠️ Cancelling will allow all backers to claim refunds.</p>
                       <button
-                        onClick={() => writeContract({ address: addr, abi: CAMPAIGN_ABI, functionName: 'cancelCampaign' })}
+                        onClick={() => writeContract({ address: addr, abi: CAMPAIGN_ABI, functionName: 'cancel' })}
                         disabled={actionPending}
                         className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition-all disabled:opacity-50"
                       >
@@ -556,14 +447,18 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                 </div>
 
                 {/* CTA button */}
-                {campaign.status === 'Active' ? (
+                {campaign.status === 'Active' && !campaign.goalReached ? (
                   <button id="contribute-btn" onClick={() => setContributeOpen(true)}
                     className="btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2">
                     <Zap className="w-5 h-5" fill="currentColor" /> Back This Project
                   </button>
                 ) : (
-                  <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${STATUS_STYLES[campaign.status] ?? 'bg-slate-100 text-slate-500'}`}>
-                    Campaign {campaign.status}
+                  <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${
+                    campaign.goalReached
+                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                      : STATUS_STYLES[campaign.status] ?? 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {campaign.goalReached ? '✓ Goal Reached — Awaiting Settlement' : `Campaign ${campaign.status}`}
                   </div>
                 )}
 
