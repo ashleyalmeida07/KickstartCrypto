@@ -98,7 +98,7 @@ export async function PATCH(req: NextRequest) {
       [contractAddress.toLowerCase()],
     );
     if (campaignRow) {
-      const emailTo = campaignRow.creator_email ?? process.env.SMTP_USER ?? null;
+      const emailTo = campaignRow.creator_email ?? null;
       if (emailTo) {
         sendCampaignSuspendedEmail(emailTo, campaignRow.title, contractAddress, reason ?? null);
         console.log(`[admin] Suspension email sent to ${emailTo}`);

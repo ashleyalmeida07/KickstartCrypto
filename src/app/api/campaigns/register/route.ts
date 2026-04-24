@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
 
     // ── 6. Send confirmation email to creator ───────────────────────────────
     try {
-      // Priority: 1. Email passed from frontend session, 2. wallet DB lookup, 3. SMTP_USER fallback
+      // Priority: 1. Email passed from frontend session, 2. wallet DB lookup
       let emailTo: string | null = creatorEmail ?? null;
 
       if (!emailTo) {
@@ -174,8 +174,6 @@ export async function POST(req: NextRequest) {
         );
         emailTo = walletUser?.email ?? null;
       }
-
-      if (!emailTo) emailTo = process.env.SMTP_USER ?? null;
 
       if (emailTo) {
         await sendCampaignCreatedEmail(emailTo, title, contractAddress, String(goalEth));

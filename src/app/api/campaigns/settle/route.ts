@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         );
 
         if (campaign) {
-          const creatorEmail = campaign.creator_email ?? process.env.SMTP_USER ?? null;
+          const creatorEmail = campaign.creator_email ?? null;
 
           if (creatorEmail) {
             const raisedEth = totalContributed
