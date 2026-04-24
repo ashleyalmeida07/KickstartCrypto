@@ -511,7 +511,7 @@ function MilestoneAllocationBar({ campaignAddress, index, colors }: {
     address: campaignAddress, abi: CAMPAIGN_ABI, functionName: 'getMilestone', args: [BigInt(index)],
   });
   if (!data || !Array.isArray(data)) return <div className="h-8 bg-slate-100 rounded shimmer" />;
-  const [title, , percentage] = data as [string, string, number, ...unknown[]];
+  const [title, , percentage] = (data as unknown) as [string, string, number, ...unknown[]];
   return (
     <div>
       <div className="flex justify-between text-xs text-slate-600 mb-1">
