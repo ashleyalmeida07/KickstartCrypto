@@ -1,0 +1,363 @@
+{
+	"compiler": {
+		"version": "0.8.30+commit.73712a01"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_treasury",
+						"type": "address"
+					},
+					{
+						"internalType": "uint8",
+						"name": "_platformFeeBps",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "constructor"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "campaignAddress",
+						"type": "address"
+					},
+					{
+						"indexed": true,
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "goal",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "uint256",
+						"name": "deadline",
+						"type": "uint256"
+					},
+					{
+						"indexed": false,
+						"internalType": "string",
+						"name": "metadataCid",
+						"type": "string"
+					}
+				],
+				"name": "CampaignCreated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "uint8",
+						"name": "newFeeBps",
+						"type": "uint8"
+					}
+				],
+				"name": "FeeUpdated",
+				"type": "event"
+			},
+			{
+				"anonymous": false,
+				"inputs": [
+					{
+						"indexed": false,
+						"internalType": "address",
+						"name": "newTreasury",
+						"type": "address"
+					}
+				],
+				"name": "TreasuryUpdated",
+				"type": "event"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"name": "campaigns",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint256",
+						"name": "_goal",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint256",
+						"name": "_durationSeconds",
+						"type": "uint256"
+					},
+					{
+						"internalType": "string",
+						"name": "_metadataCid",
+						"type": "string"
+					},
+					{
+						"internalType": "string[]",
+						"name": "_milestoneTitles",
+						"type": "string[]"
+					},
+					{
+						"internalType": "string[]",
+						"name": "_milestoneDescs",
+						"type": "string[]"
+					},
+					{
+						"internalType": "uint8[]",
+						"name": "_milestonePercs",
+						"type": "uint8[]"
+					}
+				],
+				"name": "createCampaign",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "campaignAddress",
+						"type": "address"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"name": "creatorCampaigns",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getCampaignCount",
+				"outputs": [
+					{
+						"internalType": "uint256",
+						"name": "",
+						"type": "uint256"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "getCampaigns",
+				"outputs": [
+					{
+						"internalType": "address[]",
+						"name": "",
+						"type": "address[]"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_creator",
+						"type": "address"
+					}
+				],
+				"name": "getCampaignsByCreator",
+				"outputs": [
+					{
+						"internalType": "address[]",
+						"name": "",
+						"type": "address[]"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "owner",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "platformFeeBps",
+				"outputs": [
+					{
+						"internalType": "uint8",
+						"name": "",
+						"type": "uint8"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "uint8",
+						"name": "_feeBps",
+						"type": "uint8"
+					}
+				],
+				"name": "setFee",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_treasury",
+						"type": "address"
+					}
+				],
+				"name": "setTreasury",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "_newOwner",
+						"type": "address"
+					}
+				],
+				"name": "transferOwnership",
+				"outputs": [],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			},
+			{
+				"inputs": [],
+				"name": "treasury",
+				"outputs": [
+					{
+						"internalType": "address",
+						"name": "",
+						"type": "address"
+					}
+				],
+				"stateMutability": "view",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {
+				"createCampaign(uint256,uint256,string,string[],string[],uint8[])": {
+					"params": {
+						"_durationSeconds": "Campaign duration in seconds.",
+						"_goal": "Funding target in wei.",
+						"_metadataCid": "IPFS CID pointing to JSON with title/desc/image.",
+						"_milestoneDescs": "Array of milestone descriptions.",
+						"_milestonePercs": "Array of milestone fund percentages (must sum to 100).",
+						"_milestoneTitles": "Array of milestone titles."
+					},
+					"returns": {
+						"campaignAddress": "  Address of newly deployed Campaign contract."
+					}
+				}
+			},
+			"title": "CampaignFactory",
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {
+				"createCampaign(uint256,uint256,string,string[],string[],uint8[])": {
+					"notice": "Deploy a new Campaign contract."
+				}
+			},
+			"notice": "Deploys and registers Campaign contracts.         Call getCampaigns() to enumerate all deployed addresses.",
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"CampaignFactory.sol": "CampaignFactory"
+		},
+		"evmVersion": "prague",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"Campaign.sol": {
+			"keccak256": "0xcdb085578f09492f01d92066e4222008bfd1eddefd97014a1133b6408b609524",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://d2a8469398da95b1fcbcd0cbddffe8260918e95f14e8dac9cb3e8c30b138a58c",
+				"dweb:/ipfs/QmNb9H2K5CWchsCrkkH7fuAk3kYrDSM2ho6aQWpjC1pEEQ"
+			]
+		},
+		"CampaignFactory.sol": {
+			"keccak256": "0xbccfdec4228ed90e22c320dbdd520713734873f2ac22bd63f4c292a9e79b392d",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://fc7294cdef450c950b3f3e8be7fdf8a5bc81f7576b62e5c7d1d0a00c604beec2",
+				"dweb:/ipfs/QmRG3ELUjRZdo4rtWhKvKPZR8wNZWLgt8VKKfwkpcm9muY"
+			]
+		}
+	},
+	"version": 1
+}
