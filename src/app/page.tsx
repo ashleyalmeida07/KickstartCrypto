@@ -1,10 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import Particles, { initParticlesEngine } from '@tsparticles/react';
-import type { Container, Engine } from '@tsparticles/engine';
-import { loadSlim } from '@tsparticles/slim';
 import Link from 'next/link';
 import { ArrowRight, Shield, Zap, Vote, RefreshCw, TrendingUp, Users, Target, Award } from 'lucide-react';
 import { CampaignCard, CampaignCardSkeleton } from '@/components/ui/CampaignCard';
@@ -52,38 +49,11 @@ export default function HomePage() {
   const totalBackers   = campaigns.reduce((s, c) => s + Number(c.backerCount), 0);
   const funded         = campaigns.filter(c => c.status === 'Funded').length;
   const successRate    = campaigns.length > 0 ? Math.round((funded / campaigns.length) * 100) : 0;
-  const [init, setInit] = useState(false);
-
-  useEffect(() => {
-    initParticlesEngine(async (engine) => {
-      await loadSlim(engine);
-    }).then(() => {
-      setInit(true);
-    });
-  }, []);
 
   return (
     <div className="overflow-hidden">
       {/* ── HERO ── */}
       <section className="relative min-h-screen flex items-center justify-center pt-24 pb-16 bg-gradient-to-br from-sky-50 via-white to-purple-50">
-        {init && (
-          <Particles
-            id="tsparticles"
-            options={{
-            background: { color: { value: 'transparent' } },
-            fpsLimit: 48,
-            particles: {
-              color: { value: ['#0EA5E9', '#7C3AED', '#6366F1'] },
-              links: { color: '#94A3B8', distance: 150, enable: true, opacity: 0.15, width: 1 },
-              move: { enable: true, speed: 0.5, random: true, outModes: { default: 'bounce' } },
-              number: { density: { enable: true, width: 900, height: 900 }, value: 60 },
-              opacity: { value: { min: 0.15, max: 0.4 } },
-              size: { value: { min: 1, max: 2.5 } },
-            },
-            detectRetina: true,
-          }}
-        />
-        )}
 
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-sky-300/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-300/20 rounded-full blur-3xl pointer-events-none" />
