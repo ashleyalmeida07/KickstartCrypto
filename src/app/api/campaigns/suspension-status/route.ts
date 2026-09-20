@@ -3,8 +3,8 @@ import { query } from '@/lib/db';
 
 /**
  * GET /api/campaigns/suspension-status?addresses=0x1,0x2,...
- * Returns suspension status + DB metadata for a batch of contract addresses.
- * Used by useCampaigns to hydrate titles/images without an on-chain metadataCid.
+ * Returns suspension status + DB metadata (incl. vetting) for a batch of contract addresses.
+ * Used by useCampaigns to hydrate titles/images/risk scores without an on-chain metadataCid.
  */
 export async function GET(req: NextRequest) {
   const raw = req.nextUrl.searchParams.get('addresses') ?? '';
@@ -24,9 +24,12 @@ export async function GET(req: NextRequest) {
     short_description: string | null;
     category:          string | null;
     image_cid:         string | null;
+    vetting_status:    string | null;
+    vetting_score:     number | null;
   }>(
     `SELECT contract_address, suspended, suspended_reason,
-            title, short_description, category, image_cid
+            title, short_description, category, image_cid,
+            vetting_status, vetting_score
      FROM campaigns
      WHERE contract_address IN (${placeholders})`,
     addresses,

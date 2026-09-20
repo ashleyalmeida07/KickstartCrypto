@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Users, Clock, ArrowRight, Ban } from 'lucide-react';
+import { Users, Clock, ArrowRight, Ban, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import type { OnChainCampaign } from '@/lib/useCampaigns';
 import { formatEthSmart } from '@/lib/utils';
 
@@ -24,7 +24,23 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
     address, title, description, category, imageUrl,
     progressPercent, raisedEth, goalEth,
     backerCount, daysLeft, status, suspended,
+    vettingStatus, vettingScore,
   } = campaign;
+
+  // Risk badge config
+  const riskBadge = (() => {
+    if (!vettingStatus || vettingStatus === 'pending' || vettingStatus === 'running') {
+      return { show: false, color: '', label: '', Icon: ShieldAlert };
+    }
+    const score = vettingScore ?? 0.5;
+    if (vettingStatus === 'approved' || score < 0.3) {
+      return { show: true, color: 'bg-emerald-500 text-white', label: 'Low Risk', Icon: ShieldCheck };
+    }
+    if (vettingStatus === 'flagged_for_review' || score < 0.65) {
+      return { show: true, color: 'bg-amber-500 text-white', label: 'Review', Icon: ShieldAlert };
+    }
+    return { show: true, color: 'bg-red-500 text-white', label: 'High Risk', Icon: ShieldX };
+  })();
 
   return (
     <motion.div
@@ -65,6 +81,25 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
                 <span className="text-[10px] font-bold px-2 py-0.5 bg-red-600 text-white uppercase tracking-wide">
                   {daysLeft}d left
                 </span>
+              </div>
+            )}
+
+            {/* Risk badge */}
+            {riskBadge.show && !suspended && (
+              <div className="absolute bottom-3 right-3">
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${riskBadge.color} shadow-sm`}>
+                  <riskBadge.Icon className="w-2.5 h-2.5" />
+                  {riskBadge.label}
+                </div>
+              </div>
+            )}
+            {/* Vetting in progress pulse */}
+            {(vettingStatus === 'pending' || vettingStatus === 'running') && !suspended && (
+              <div className="absolute bottom-3 right-3">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-700/70 text-white">
+                  <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                  Vetting
+                </div>
               </div>
             )}
 

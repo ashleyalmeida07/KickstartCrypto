@@ -7,7 +7,7 @@ import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadCont
 import {
   ExternalLink, Users, Clock, Shield, Share2,
   AlertCircle, CheckCircle, Loader2, RefreshCw,
-  XCircle, Zap
+  XCircle, Zap, Settings,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatEther } from 'viem';
@@ -18,7 +18,7 @@ import { ContributeModal } from '@/components/ui/ContributeModal';
 import { TxHashBadge } from '@/components/ui/TxHashBadge';
 import { formatEthSmart } from '@/lib/utils';
 
-type Tab = 'overview' | 'milestones' | 'refund';
+type Tab = 'overview' | 'milestones' | 'refund' | 'support';
 const PIE_COLORS = ['#0EA5E9', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'];
 
 // ─── Tiny TxButton — handles write + wait + toast ────────────────────────────
@@ -93,6 +93,171 @@ function MilestoneRow({
         <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1 mt-3">
           <CheckCircle className="w-3.5 h-3.5" /> Funds automatically released to creator via settle()
         </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Support Tab ─────────────────────────────────────────────────────────────
+function SupportTab({
+  campaignAddress,
+  userAddress,
+}: {
+  campaignAddress: string;
+  userAddress: `0x${string}` | undefined;
+}) {
+  const [message, setMessage]       = useState('');
+  const [ticketId, setTicketId]     = useState<string | null>(null);
+  const [pollState, setPollState]   = useState<'idle' | 'submitting' | 'polling' | 'done' | 'escalated' | 'error'>('idle');
+  const [response, setResponse]     = useState<string | null>(null);
+  const [intent, setIntent]         = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!message.trim() || !userAddress) {
+      toast.error('Connect your wallet and enter a message first.');
+      return;
+    }
+    setPollState('submitting');
+    try {
+      const res = await fetch('http://localhost:8001/donor-support/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          donor_address:    userAddress,
+          campaign_address: campaignAddress,
+          message:          message.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(`Agent responded ${res.status}`);
+      const data = await res.json();
+      setTicketId(data.ticket_id);
+      setPollState('polling');
+
+      // Poll every 3 seconds for up to 2 minutes
+      let attempts = 0;
+      const MAX = 40;
+      const poll = async () => {
+        if (attempts++ > MAX) { setPollState('error'); return; }
+        const r = await fetch(`http://localhost:8001/donor-support/ticket/${data.ticket_id}`);
+        if (!r.ok) { setPollState('error'); return; }
+        const t = await r.json();
+        setIntent(t.intent);
+        if (t.status === 'closed' || t.status === 'resolved') {
+          setResponse(t.final_response || t.draft_response || 'No response generated.');
+          setPollState('done');
+        } else if (t.status === 'escalated') {
+          setResponse(t.draft_response);
+          setPollState('escalated');
+        } else if (t.status === 'error') {
+          setPollState('error');
+        } else {
+          setTimeout(poll, 3000);
+        }
+      };
+      setTimeout(poll, 3000);
+    } catch {
+      setPollState('error');
+    }
+  };
+
+  const INTENT_LABELS: Record<string, string> = {
+    refund_request:   '💸 Refund Request',
+    status_inquiry:   '📊 Status Inquiry',
+    fraud_report:     '🚨 Fraud Report',
+    general_question: '❓ General Question',
+  };
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+      <h3 className="font-bold text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+        Contact Support
+      </h3>
+      <p className="text-sm text-slate-500">
+        Our AI support agent will review your message, check your contribution data, and reply in seconds.
+        Fraud reports and complex cases are escalated to our team.
+      </p>
+
+      {pollState === 'idle' || pollState === 'submitting' ? (
+        <div className="space-y-3">
+          <textarea
+            className="input-crypto resize-none w-full"
+            rows={4}
+            placeholder="e.g. Where did my money go? / I want a refund / This looks like a scam…"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            disabled={pollState === 'submitting'}
+          />
+          <button
+            onClick={submit}
+            disabled={pollState === 'submitting' || !message.trim()}
+            className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {pollState === 'submitting'
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+              : <><Zap className="w-4 h-4" /> Send to AI Support</>
+            }
+          </button>
+        </div>
+      ) : pollState === 'polling' ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-sky-600">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>AI is analysing your request…</span>
+          </div>
+          {['Classifying your intent', 'Fetching your transaction data', 'Checking platform policy', 'Drafting response'].map((s, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs text-slate-500">
+              <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
+              {s}
+            </div>
+          ))}
+          {ticketId && <p className="text-[11px] text-slate-400 font-mono">Ticket: {ticketId}</p>}
+        </div>
+      ) : pollState === 'done' ? (
+        <div className="space-y-4">
+          {intent && (
+            <span className="inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-sky-50 border border-sky-200 text-sky-700">
+              {INTENT_LABELS[intent] ?? intent}
+            </span>
+          )}
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-emerald-700 mb-2 flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5" /> AI Response
+            </p>
+            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{response}</p>
+          </div>
+          <button onClick={() => { setPollState('idle'); setMessage(''); setTicketId(null); setResponse(null); setIntent(null); }}
+            className="text-xs text-sky-600 hover:underline">
+            Ask another question
+          </button>
+        </div>
+      ) : pollState === 'escalated' ? (
+        <div className="space-y-4">
+          {intent && (
+            <span className="inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700">
+              {INTENT_LABELS[intent] ?? intent} — Escalated to Human
+            </span>
+          )}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <p className="text-xs font-semibold text-amber-700 mb-2 flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5" /> Escalated for Human Review
+            </p>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              {response
+                ? <span className="whitespace-pre-wrap">{response}</span>
+                : 'Your case has been flagged for manual review by our team. We will reach out shortly.'
+              }
+            </p>
+          </div>
+          {ticketId && <p className="text-[11px] text-slate-400 font-mono">Ticket ID: {ticketId}</p>}
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 p-3.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold">Support unavailable</div>
+            Agent backend is offline. Please try again later or email support@kickstartcrypto.app
+          </div>
+        </div>
       )}
     </div>
   );
@@ -188,7 +353,6 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
           className="w-full h-full object-cover"
           onError={e => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${addr.slice(2, 10)}/1200/400`; }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/80 via-transparent to-transparent" />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 -mt-12 relative z-10 pb-24">
@@ -229,6 +393,15 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                   <span className="text-xs font-semibold">Verified Contract</span>
                 </div>
                 <div className="ml-auto flex gap-2">
+                  {isCreator && (
+                    <Link
+                      href={`/dashboard?campaign=${addr}`}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-all text-xs font-semibold"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Manage Campaign
+                    </Link>
+                  )}
                   <button onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied!'); }}
                     className="p-2 rounded-lg border border-slate-200 text-slate-500 hover:border-sky-300 hover:text-sky-600 transition-all">
                     <Share2 className="w-4 h-4" />
@@ -252,6 +425,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                 { id: 'overview'   as Tab, label: 'Overview'   },
                 { id: 'milestones' as Tab, label: `Milestones (${milestones.length})` },
                 { id: 'refund'     as Tab, label: 'Refunds'    },
+                { id: 'support'    as Tab, label: '💬 Support'  },
               ]).map(({ id, label }) => (
                 <button key={id} onClick={() => setActiveTab(id)}
                   className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap -mb-px ${
@@ -397,6 +571,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                   )}
                 </div>
               )}
+
+              {/* ── SUPPORT TAB ── */}
+              {activeTab === 'support' && (
+                <SupportTab campaignAddress={addr} userAddress={userAddress} />
+              )}
             </motion.div>
           </div>
 
@@ -451,6 +630,14 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                   <button id="contribute-btn" onClick={() => setContributeOpen(true)}
                     className="btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2">
                     <Zap className="w-5 h-5" fill="currentColor" /> Back This Project
+                  </button>
+                ) : canClaimRefund ? (
+                  <button onClick={() => {
+                      setActiveTab('refund');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="w-full py-3.5 rounded-xl text-center text-base font-semibold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-all flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5" /> Claim Your Refund
                   </button>
                 ) : (
                   <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${

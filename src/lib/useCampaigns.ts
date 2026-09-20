@@ -32,6 +32,9 @@ export interface OnChainCampaign {
   suspended:        boolean;
   suspendedReason:  string | null;
   _existsInDb:      boolean;
+  // Vetting
+  vettingStatus:    string | null;
+  vettingScore:     number | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -95,6 +98,8 @@ function buildCampaign(
     suspended,
     suspendedReason,
     _existsInDb:     existsInDb,
+    vettingStatus:   (dbMeta as DbInfo | undefined)?.vettingStatus ?? null,
+    vettingScore:    (dbMeta as DbInfo | undefined)?.vettingScore  ?? null,
   };
 }
 
@@ -108,6 +113,8 @@ interface DbInfo {
   description?:     string;
   category?:        string;
   imageUrl?:        string;
+  vettingStatus?:   string | null;
+  vettingScore?:    number | null;
 }
 
 async function fetchDbInfo(addresses: string[]): Promise<Record<string, DbInfo>> {
@@ -123,17 +130,21 @@ async function fetchDbInfo(addresses: string[]): Promise<Record<string, DbInfo>>
       short_description?: string;
       category?:        string;
       image_cid?:       string;
+      vetting_status?:  string | null;
+      vetting_score?:   number | null;
     }> = await res.json();
     return Object.fromEntries(data.map(r => [
       r.contract_address.toLowerCase(),
       {
-        suspended:   r.suspended,
-        reason:      r.suspended_reason,
-        existsInDb:  true,
-        title:       r.title,
-        description: r.short_description,
-        category:    r.category,
-        imageUrl:    r.image_cid,
+        suspended:     r.suspended,
+        reason:        r.suspended_reason,
+        existsInDb:    true,
+        title:         r.title,
+        description:   r.short_description,
+        category:      r.category,
+        imageUrl:      r.image_cid,
+        vettingStatus: r.vetting_status ?? null,
+        vettingScore:  r.vetting_score  ?? null,
       },
     ]));
   } catch {

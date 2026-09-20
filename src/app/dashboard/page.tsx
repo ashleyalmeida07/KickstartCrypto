@@ -467,10 +467,10 @@ export default function DashboardPage() {
                   {myCampaigns.map((c, i) => (
                     <div key={c.address} className="relative group">
                       <CampaignCard campaign={c} index={i} />
-                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute top-3 right-3 z-10">
                         <Link href={`/manage/${c.address}`}>
-                          <button className="text-xs bg-white border border-zinc-200 hover:border-zinc-400 px-2.5 py-1 font-semibold text-zinc-700 transition-colors shadow-sm">
-                            Manage
+                          <button className="flex items-center gap-1.5 text-xs bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/20 text-white font-semibold px-3 py-1.5 rounded-full shadow-lg transition-all hover:scale-105">
+                            <Settings className="w-3.5 h-3.5" /> Manage
                           </button>
                         </Link>
                       </div>

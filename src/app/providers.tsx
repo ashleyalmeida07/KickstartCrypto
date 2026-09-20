@@ -9,6 +9,8 @@ import { SessionProvider } from 'next-auth/react';
 import { config } from '@/lib/wagmi';
 import { Toaster } from 'react-hot-toast';
 import { useState, useEffect } from 'react';
+import { DeploymentProvider } from '@/context/DeploymentContext';
+import { DeploymentWidget } from '@/components/ui/DeploymentWidget';
 
 // ── Known MetaMask / analytics hostnames to silently block ───────────────────
 const BLOCKED_HOSTNAMES = new Set([
@@ -180,7 +182,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
             })}
             modalSize="compact"
           >
-            {children}
+            <DeploymentProvider>
+              {children}
+              <DeploymentWidget />
+            </DeploymentProvider>
             <Toaster
               position="bottom-right"
               toastOptions={{

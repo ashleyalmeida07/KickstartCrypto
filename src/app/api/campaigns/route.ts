@@ -128,6 +128,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 6. Trigger agentic campaign vetting (fire-and-forget — non-blocking)
+    //    The FastAPI agent backend runs the LangGraph vetting flow asynchronously.
+    //    If the agent backend is offline, the campaign still registers successfully.
+    const agentUrl = process.env.AGENT_BACKEND_URL ?? 'http://localhost:8001';
+    void fetch(`${agentUrl}/vet-campaign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract_address: contractAddress }),
+    }).catch((agentErr) => {
+      // Non-critical — log but do not fail the campaign creation response
+      console.warn('[POST /api/campaigns] Agent backend unreachable (vetting skipped):', agentErr?.message);
+    });
+
     return NextResponse.json({ id: campaignId, message: 'created' }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/campaigns]', err);

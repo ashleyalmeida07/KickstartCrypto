@@ -1,14 +1,17 @@
 'use client';
 
 import { useSession } from 'next-auth/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { parseEther } from 'viem';
 import { useRouter } from 'next/navigation';
 import {
   Upload, Plus, Trash2, ChevronLeft, ChevronRight,
-  Loader2, CheckCircle, AlertCircle, Info, Rocket
+  Loader2, CheckCircle, AlertCircle, Info, Rocket,
+  ShieldCheck, ShieldAlert, ShieldX, Wallet, FileText,
+  RefreshCw, AlertTriangle, Search, Cpu, BarChart3,
+  Clock, Hash, Activity,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { CAMPAIGN_FACTORY_ADDRESS, CAMPAIGN_FACTORY_ABI } from '@/lib/contracts';
@@ -16,8 +19,9 @@ import { CampaignCategory } from '@/lib/types';
 import { CATEGORIES } from '@/lib/data';
 import { TxHashBadge } from '@/components/ui/TxHashBadge';
 import { uploadCampaignImage } from '@/lib/utils';
+import { useDeployment } from '@/context/DeploymentContext';
 
-const STEPS = ['Basic Info', 'Funding', 'Milestones', 'Review & Deploy'];
+const STEPS = ['Basic Info', 'Funding', 'Milestones', 'AI Risk Check', 'Review & Deploy'];
 
 type Milestone  = { title: string; description: string; percentage: number; estimatedDate: string };
 type RewardTier = { id: number; name: string; minContribution: string; description: string };
@@ -43,20 +47,42 @@ export default function CreatePage() {
   const { address, isConnected } = useAccount();
   const { data: session } = useSession();
 
-  const [step, setStep]       = useState(0);
-  const [form, setForm]       = useState<FormData>(DEFAULT_FORM);
+  const [step, setStep]   = useState(0);
+  const [form, setForm]   = useState<FormData>(DEFAULT_FORM);
   const [deploying, setDeploying] = useState(false);
-  const [txHash, setTxHash]   = useState<`0x${string}` | undefined>(undefined);
-  const [deployed, setDeployed] = useState(false);
+
+  // Global deployment tracker — survives navigation
+  const deployment = useDeployment();
+  const txHash  = deployment.deploy.txHash;
+  const deployed = deployment.deploy.status === 'done';
+
+  // Pre-vet state
+  type PreVetResult = {
+    risk_score: number; verdict: string; wallet_score: number | null;
+    content_score: number | null; reasons: string[];
+    wallet_age_days: number | null; wallet_tx_count: number | null;
+    wallet_on_blocklist: boolean | null; can_deploy: boolean;
+  };
+  type NodeState = 'idle' | 'running' | 'done' | 'skipped';
+  const [preVetState, setPreVetState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [preVetResult, setPreVetResult] = useState<PreVetResult | null>(null);
+  const [preVetError, setPreVetError]   = useState('');
+  // Per-node live state for the detailed pipeline view
+  const [nodeStates, setNodeStates] = useState<Record<string, NodeState>>({
+    wallet: 'idle', content: 'idle', score: 'idle',
+  });
+  const setNodeState = (node: string, s: NodeState) =>
+    setNodeStates(prev => ({ ...prev, [node]: s }));
 
   const { writeContract } = useWriteContract({
     mutation: {
       onSuccess: (hash) => {
-        setTxHash(hash);
-        toast.success('Transaction submitted — awaiting confirmation.');
+        deployment.setTxHash(hash);
+        toast.success('Transaction submitted!');
       },
       onError: (err) => {
         setDeploying(false);
+        deployment.setError(err.message.slice(0, 120));
         toast.error(err.message.slice(0, 120));
       },
     },
@@ -66,15 +92,13 @@ export default function CreatePage() {
     hash:  txHash,
     query: { enabled: !!txHash },
   });
-
-  // After on-chain confirm — register in DB then redirect
+  // After on-chain confirm — register in DB, update global widget, navigate away
   useEffect(() => {
-    if (isSuccess && !deployed) {
-      setDeployed(true);
+    if (isSuccess && deployment.deploy.status === 'confirming') {
       setDeploying(false);
-      toast.success('Campaign deployed on-chain.');
+      deployment.setRegistering();
+      toast.success('Confirmed on-chain! Registering campaign…');
 
-      // Server resolves the contract address from the tx receipt log
       fetch('/api/campaigns/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,21 +117,78 @@ export default function CreatePage() {
         }),
       })
         .then(r => r.json())
-        .then(d => console.log('[DB] Campaign registered:', d))
-        .catch(e => console.error('[DB] Register failed:', e));
-
-      setTimeout(() => router.push('/explore'), 3500);
+        .then(d => {
+          console.log('[DB] Campaign registered:', d);
+          deployment.setDone(d?.contractAddress ?? undefined);
+          toast.success('Campaign is live! 🎉');
+          setTimeout(() => router.push('/explore'), 1200);
+        })
+        .catch(e => {
+          console.error('[DB] Register failed:', e);
+          deployment.setDone(undefined);
+        });
     }
-  }, [isSuccess, deployed, router, address, form, txHash]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuccess]);
 
-  /* ── Derived ── */
+
+  /* â”€â”€ Derived â”€â”€ */
   const totalMilestonePercent = form.milestones.reduce((s, m) => s + Number(m.percentage), 0);
   const isStep0Valid = form.title.length > 3 && form.shortDescription.length > 10;
   const isStep1Valid = parseFloat(form.goalEth) > 0 && form.durationDays >= 1;
   const isStep2Valid = form.milestones.length > 0 && totalMilestonePercent === 100 && form.milestones.every(m => m.title.trim());
-  const canDeploy    = isConnected && isStep0Valid && isStep1Valid && isStep2Valid;
+  // Step 3 is valid when vet is done (pass or error/offline) and not blocked
+  const isStep3Valid = preVetState === 'done' || preVetState === 'error';
+  const canDeploy    = isConnected && isStep0Valid && isStep1Valid && isStep2Valid
+    && (preVetResult === null || preVetResult.can_deploy);
 
-  /* ── Helpers ── */
+  /* â”€â”€ Pre-vet runner with per-node live state â”€â”€ */
+  const runPreVet = useCallback(async () => {
+    if (!address || !isStep0Valid || !isStep1Valid) return;
+    setPreVetState('running');
+    setPreVetResult(null);
+    setPreVetError('');
+    setNodeStates({ wallet: 'running', content: 'idle', score: 'idle' });
+    try {
+      // Simulate staggered node progression for live UX
+      const walletTimer = setTimeout(() => setNodeState('content', 'running'), 2000);
+      const contentTimer = setTimeout(() => setNodeState('score', 'running'), 5000);
+
+      const res = await fetch('http://localhost:8001/pre-vet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title:           form.title,
+          description:     form.shortDescription,
+          goal_eth:        parseFloat(form.goalEth) || 0,
+          category:        form.category,
+          creator_address: address,
+        }),
+      });
+      clearTimeout(walletTimer);
+      clearTimeout(contentTimer);
+
+      if (!res.ok) throw new Error(`Agent responded ${res.status}`);
+      const data: PreVetResult = await res.json();
+      setNodeStates({ wallet: 'done', content: 'done', score: 'done' });
+      setPreVetResult(data);
+      setPreVetState('done');
+    } catch (e) {
+      setNodeStates({ wallet: 'done', content: 'done', score: 'done' });
+      setPreVetError((e as Error).message);
+      setPreVetState('error');
+    }
+  }, [address, form.title, form.shortDescription, form.goalEth, form.category, isStep0Valid, isStep1Valid]);
+
+  // Auto-run pre-vet when user arrives at step 3 (AI Risk Check)
+  useEffect(() => {
+    if (step === 3 && preVetState === 'idle') {
+      runPreVet();
+    }
+  }, [step, preVetState, runPreVet]);
+
+
+  /* â”€â”€ Helpers â”€â”€ */
   const updateForm = (u: Partial<FormData>) => setForm(prev => ({ ...prev, ...u }));
 
   const handleThumbnail = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,11 +211,12 @@ export default function CreatePage() {
     if (totalMilestonePercent !== 100) { toast.error('Milestone percentages must add up to 100%'); return; }
     if (form.milestones.some(m => !m.title.trim())) { toast.error('All milestones need a title'); return; }
     setDeploying(true);
+    deployment.startDeployment(form.title);
 
-    // 1️⃣  Upload thumbnail to Supabase Storage (if the user selected one)
+    // 1ï¸âƒ£  Upload thumbnail to Supabase Storage (if the user selected one)
     let imageUrl = form.thumbnailCid || '';
     if (form.thumbnailFile && !imageUrl) {
-      const uploadToast = toast.loading('Uploading image to Supabase…');
+      const uploadToast = toast.loading('Uploading image to Supabaseâ€¦');
       try {
         imageUrl = await uploadCampaignImage(form.thumbnailFile);
         updateForm({ thumbnailCid: imageUrl });
@@ -146,7 +228,7 @@ export default function CreatePage() {
       }
     }
 
-    // 2️⃣  Store metadata as JSON in the metadataCid field on-chain
+    // 2ï¸âƒ£  Store metadata as JSON in the metadataCid field on-chain
     const metadataCid = JSON.stringify({
       title:       form.title,
       description: form.shortDescription,
@@ -168,7 +250,7 @@ export default function CreatePage() {
     });
   };
 
-  /* ── Shared label style ── */
+  /* â”€â”€ Shared label style â”€â”€ */
   const label = 'block text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-1.5';
   const hint  = 'text-xs text-zinc-400 mt-1';
   const card  = 'bg-white border border-zinc-200 p-7 space-y-5';
@@ -225,7 +307,7 @@ export default function CreatePage() {
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.25 }}
         >
-          {/* ── STEP 0: Basic Info ── */}
+          {/* â”€â”€ STEP 0: Basic Info â”€â”€ */}
           {step === 0 && (
             <div className={card}>
               <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -257,7 +339,7 @@ export default function CreatePage() {
               </div>
 
               <div>
-                <label className={label}>Thumbnail Image <span className="text-slate-400 font-normal normal-case tracking-normal">— optional</span></label>
+                <label className={label}>Thumbnail Image <span className="text-slate-400 font-normal normal-case tracking-normal">â€” optional</span></label>
                 <div
                   className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-sky-400 hover:bg-sky-50/40 transition-all"
                   onClick={() => document.getElementById('thumbnail-input')?.click()}
@@ -268,7 +350,7 @@ export default function CreatePage() {
                     <>
                       <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                       <p className="text-sm text-slate-600 font-medium">Click to upload thumbnail</p>
-                      <p className={hint}>JPEG, PNG, WebP — max 10 MB</p>
+                      <p className={hint}>JPEG, PNG, WebP â€” max 10 MB</p>
                     </>
                   )}
                 </div>
@@ -277,7 +359,7 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* ── STEP 1: Funding ── */}
+          {/* â”€â”€ STEP 1: Funding â”€â”€ */}
           {step === 1 && (
             <div className={card}>
               <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -294,24 +376,24 @@ export default function CreatePage() {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-bold">ETH</span>
                 </div>
                 {form.goalEth && (
-                  <p className={hint}>≈ ${(parseFloat(form.goalEth) * 3200).toLocaleString(undefined, { maximumFractionDigits: 0 })} USD at current rates</p>
+                  <p className={hint}>â‰ˆ ${(parseFloat(form.goalEth) * 3200).toLocaleString(undefined, { maximumFractionDigits: 0 })} USD at current rates</p>
                 )}
               </div>
 
               <div>
                 <label className={label}>Campaign Duration: <span className="text-sky-600">{form.durationDays} days</span></label>
-                <input id="create-duration" type="range" min="7" max="90"
+                <input id="create-duration" type="range" min="7" max="365"
                   value={form.durationDays}
                   onChange={e => updateForm({ durationDays: parseInt(e.target.value) })}
                   className="w-full accent-sky-500 h-2 rounded-lg cursor-pointer" />
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>7 days</span><span>90 days</span>
+                  <span>7 days</span><span>1 year</span>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className={label + ' mb-0'}>Reward Tiers <span className="text-slate-400 font-normal normal-case tracking-normal">— optional</span></label>
+                  <label className={label + ' mb-0'}>Reward Tiers <span className="text-slate-400 font-normal normal-case tracking-normal">â€” optional</span></label>
                   <button onClick={addTier} className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-semibold">
                     <Plus className="w-3.5 h-3.5" /> Add Tier
                   </button>
@@ -342,7 +424,7 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* ── STEP 2: Milestones ── */}
+          {/* â”€â”€ STEP 2: Milestones â”€â”€ */}
           {step === 2 && (
             <div className={card}>
               <div className="flex items-center justify-between">
@@ -361,7 +443,7 @@ export default function CreatePage() {
                 <Info className="w-4 h-4 flex-shrink-0" />
                 <span>
                   Total milestone percentage: <strong>{totalMilestonePercent}%</strong>
-                  {totalMilestonePercent !== 100 && ` — must equal 100%`}
+                  {totalMilestonePercent !== 100 && ` â€” must equal 100%`}
                 </span>
                 {totalMilestonePercent === 100 && <CheckCircle className="w-4 h-4 ml-auto flex-shrink-0" />}
               </div>
@@ -403,8 +485,376 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* ── STEP 3: Review & Deploy ── */}
-          {step === 3 && (
+          {/* â”€â”€ STEP 3: AI Risk Check â”€â”€ */}
+          {step === 3 && (() => {
+            const score   = preVetResult?.risk_score ?? 0;
+            const pct     = Math.round(score * 100);
+            const barColor = score < 0.3 ? '#10b981' : score < 0.65 ? '#f59e0b' : '#ef4444';
+
+            // Per-node expanded state for the "..." dropdown
+            const [expandedNode, setExpandedNode] = useState<string | null>(null);
+            const toggleExpand = (id: string) =>
+              setExpandedNode(prev => prev === id ? null : id);
+
+            const NodeStatusIcon = ({ state }: { state: string }) =>
+              state === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-sky-500" /> :
+              state === 'done'    ? <CheckCircle className="w-4 h-4 text-emerald-500" /> :
+                                   <div className="w-4 h-4 rounded-full border-2 border-zinc-300" />;
+
+            const Tag = ({ label, color }: { label: string; color: string }) => (
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${color}`}>
+                {label}
+              </span>
+            );
+
+            const nodes = [
+              {
+                id: 'wallet',
+                icon: Wallet,
+                label: 'Node 1 — Wallet History Check',
+                method: { label: 'Etherscan API', color: 'bg-sky-50 border-sky-200 text-sky-700' },
+                desc: `Querying Etherscan Sepolia for ${address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'your wallet'}`,
+                // What data goes IN
+                inputs: [
+                  { label: 'Wallet Address',  value: address ?? 'Not connected',          type: 'Address' },
+                  { label: 'Network',          value: 'Sepolia Testnet',                   type: 'Config'  },
+                  { label: 'Data Source',      value: 'Etherscan API (txlist endpoint)',   type: 'API'     },
+                  { label: 'Checks',           value: 'Age · Tx count · Known fraud lists', type: 'Logic' },
+                  { label: 'Blocklist DB',     value: 'Internal flagged-address registry', type: 'DB'     },
+                ],
+                // What comes OUT (only after done)
+                outputs: nodeStates.wallet === 'done' && preVetResult ? [
+                  { label: 'Wallet Age',      value: preVetResult.wallet_age_days !== null ? `${preVetResult.wallet_age_days} days` : '—',      good: (preVetResult.wallet_age_days ?? 0) > 30 },
+                  { label: 'Tx Count',        value: preVetResult.wallet_tx_count !== null ? `${preVetResult.wallet_tx_count} transactions` : '—', good: (preVetResult.wallet_tx_count ?? 0) > 5 },
+                  { label: 'Blocklist',       value: preVetResult.wallet_on_blocklist === true ? '🔴 Flagged' : '✅ Clean',                      good: !preVetResult.wallet_on_blocklist },
+                  { label: 'Wallet Score',    value: preVetResult.wallet_score !== null ? `${Math.round((preVetResult.wallet_score ?? 0) * 100)}%` : '—', good: (preVetResult.wallet_score ?? 0) > 0.5 },
+                ] : [],
+                scoring: 'Weight: 50% of final risk score. Age < 7 days or tx count < 2 adds risk.',
+              },
+              {
+                id: 'content',
+                icon: FileText,
+                label: 'Node 2 — Content Authenticity Analysis',
+                method: { label: 'LLM (OpenRouter)', color: 'bg-purple-50 border-purple-200 text-purple-700' },
+                desc: `Analysing "${form.title.slice(0, 40)}${form.title.length > 40 ? '…' : ''}" for fraud signals`,
+                inputs: [
+                  { label: 'Campaign Title',  value: form.title || '—',                                          type: 'Text'   },
+                  { label: 'Description',     value: `${form.shortDescription.slice(0, 80)}${form.shortDescription.length > 80 ? '…' : ''}`, type: 'Text' },
+                  { label: 'Category',        value: form.category,                                               type: 'Meta'   },
+                  { label: 'Funding Goal',    value: form.goalEth ? `${form.goalEth} ETH` : '—',                  type: 'Number' },
+                  { label: 'LLM Model',       value: 'mistralai/mistral-7b-instruct (OpenRouter)',                type: 'Model'  },
+                  { label: 'Checks',          value: 'Realistic promises · Coherence · Plagiarism · Urgency pressure', type: 'Logic' },
+                ],
+                outputs: nodeStates.content === 'done' && preVetResult ? [
+                  { label: 'Content Score',  value: `${Math.round((preVetResult.content_score ?? 0) * 100)}%`, good: (preVetResult.content_score ?? 0) > 0.5 },
+                  { label: 'Flags',          value: preVetResult.reasons.filter(r => !['wallet','blocklist'].some(w => r.includes(w))).join(', ').replace(/_/g, ' ') || 'None', good: preVetResult.reasons.length === 0 },
+                ] : [],
+                scoring: 'Weight: 50% of final risk score. Measures authenticity 0–1 (1 = clean). Flags like URGENCY_PRESSURE or PLAGIARISM_SIGNALS reduce this score.',
+              },
+              {
+                id: 'score',
+                icon: BarChart3,
+                label: 'Node 3 — Risk Score Computation',
+                method: { label: 'Algorithm', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+                desc: 'Combines wallet + content signals into a single 0–100 risk score',
+                inputs: [
+                  { label: 'Wallet Score',    value: preVetResult ? `${Math.round((preVetResult.wallet_score ?? 0) * 100)}%` : 'Pending',      type: 'Input' },
+                  { label: 'Content Score',   value: preVetResult ? `${Math.round((preVetResult.content_score ?? 0) * 100)}%` : 'Pending',     type: 'Input' },
+                  { label: 'Formula',         value: 'risk = 1 − (wallet × 0.5 + content × 0.5)',                                              type: 'Logic' },
+                  { label: 'Low threshold',   value: '< 30 → Auto-Approved',                                                                   type: 'Config' },
+                  { label: 'Medium threshold',value: '30–65 → Flagged for Review',                                                             type: 'Config' },
+                  { label: 'High threshold',  value: '> 65 → Auto-Rejected',                                                                   type: 'Config' },
+                ],
+                outputs: nodeStates.score === 'done' && preVetResult ? [
+                  { label: 'Risk Score',   value: `${pct} / 100`,                                                                              good: pct < 30 },
+                  { label: 'Verdict',      value: preVetResult.verdict === 'auto_approve' ? '✅ Auto-Approved' : preVetResult.verdict === 'flag_for_review' ? '⚠️ Flagged for Review' : '🚫 Rejected', good: preVetResult.verdict === 'auto_approve' },
+                  { label: 'Can Deploy',   value: preVetResult.can_deploy ? '✅ Yes' : '❌ Blocked',                                           good: preVetResult.can_deploy },
+                ] : [],
+                scoring: 'The final score gates deployment. > 65 = blocked. 30–65 = deployed with a manual review flag. < 30 = auto-approved.',
+              },
+            ];
+
+            return (
+              <div className="space-y-4">
+                {/* Header card */}
+                <div className={card}>
+                  <div className="flex items-center justify-between mb-1">
+                    <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                      AI Risk Analysis
+                    </h2>
+                    {(preVetState === 'done' || preVetState === 'error') && (
+                      <button onClick={() => { setPreVetState('idle'); setNodeStates({ wallet: 'idle', content: 'idle', score: 'idle' }); setExpandedNode(null); runPreVet(); }}
+                        className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-800 border border-zinc-200 px-2.5 py-1.5 rounded-lg transition-all">
+                        <RefreshCw className="w-3 h-3" /> Re-run
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-sm text-zinc-500">
+                    Three independent checks run before you deploy — wallet reputation, content authenticity, and combined risk scoring.
+                    Click <span className="font-semibold text-zinc-700">···</span> on any node to see exactly what data the flow is using.
+                  </p>
+
+                  {/* Pipeline flow */}
+                  <div className="mt-5 space-y-1">
+                    {nodes.map((node, i) => {
+                      const ns = nodeStates[node.id];
+                      const isOpen = expandedNode === node.id;
+
+                      return (
+                        <div key={node.id}>
+                          {/* Node card */}
+                          <motion.div
+                            initial={{ opacity: 0, x: -8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className={`border rounded-2xl overflow-hidden transition-all duration-300 ${
+                              ns === 'running' ? 'border-sky-300 bg-sky-50/60 shadow-sm' :
+                              ns === 'done'    ? 'border-emerald-200 bg-emerald-50/30' :
+                              'border-zinc-200 bg-zinc-50/40'
+                            }`}
+                          >
+                            {/* Node header row */}
+                            <div className="flex items-center gap-3 px-4 py-3">
+                              <NodeStatusIcon state={ns} />
+                              <node.icon className={`w-4 h-4 shrink-0 ${ns === 'running' ? 'text-sky-500' : ns === 'done' ? 'text-emerald-500' : 'text-zinc-400'}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-sm font-semibold ${ns === 'running' ? 'text-sky-700' : ns === 'done' ? 'text-zinc-800' : 'text-zinc-400'}`}
+                                  style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                                  {node.label}
+                                </div>
+                                <div className="text-[11px] text-zinc-400 truncate mt-0.5">{node.desc}</div>
+                              </div>
+                              {/* Method tag */}
+                              <Tag label={node.method.label} color={node.method.color} />
+                              {/* Pulsing dots while running */}
+                              {ns === 'running' && (
+                                <div className="flex gap-1 ml-1">
+                                  {[0,1,2].map(d => (
+                                    <div key={d} className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: `${d * 0.15}s` }} />
+                                  ))}
+                                </div>
+                              )}
+                              {/* Expand toggle */}
+                              <button
+                                onClick={() => toggleExpand(node.id)}
+                                className={`p-1.5 rounded-lg transition-all text-xs font-bold tracking-widest ${
+                                  isOpen ? 'bg-zinc-100 text-zinc-700' : 'text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100'
+                                }`}
+                                title="Show data details"
+                              >
+                                {isOpen ? '▲' : '···'}
+                              </button>
+                            </div>
+
+                            {/* Expandable: Input Data panel */}
+                            <AnimatePresence>
+                              {isOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.25 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="border-t border-zinc-100 px-4 pt-3 pb-1">
+                                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
+                                      📥 Input Data
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {node.inputs.map(inp => (
+                                        <div key={inp.label} className="flex items-start gap-2">
+                                          <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                                            inp.type === 'API'    ? 'bg-sky-50 text-sky-600 border border-sky-200' :
+                                            inp.type === 'LLM' || inp.type === 'Model'   ? 'bg-purple-50 text-purple-600 border border-purple-200' :
+                                            inp.type === 'DB'    ? 'bg-orange-50 text-orange-600 border border-orange-200' :
+                                            inp.type === 'Logic' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                                            inp.type === 'Input' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                                            inp.type === 'Config'? 'bg-zinc-100 text-zinc-600 border border-zinc-200' :
+                                            'bg-zinc-50 text-zinc-500 border border-zinc-200'
+                                          }`}>
+                                            {inp.type}
+                                          </span>
+                                          <div className="flex-1 flex items-baseline justify-between gap-2 min-w-0">
+                                            <span className="text-xs text-zinc-500 shrink-0">{inp.label}</span>
+                                            <span className="text-xs font-semibold text-zinc-800 truncate text-right">{inp.value}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className="mt-3 p-2.5 bg-zinc-50 border border-zinc-100 rounded-lg">
+                                      <p className="text-[10px] text-zinc-400">
+                                        <span className="font-semibold text-zinc-500">⚖️ Scoring note: </span>
+                                        {node.scoring}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {/* Output data — shown when done, or loading skeleton when running */}
+                            <AnimatePresence>
+                              {ns === 'running' && isOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="border-t border-sky-100/50 px-4 py-3"
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Loader2 className="w-3 h-3 text-sky-500 animate-spin" />
+                                    <p className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">
+                                      Computing Output…
+                                    </p>
+                                  </div>
+                                  <div className="space-y-2.5 opacity-60">
+                                    <div className="h-2 bg-sky-200/40 rounded w-full animate-pulse" />
+                                    <div className="h-2 bg-sky-200/40 rounded w-3/4 animate-pulse" />
+                                    <div className="h-2 bg-sky-200/40 rounded w-1/2 animate-pulse" />
+                                  </div>
+                                </motion.div>
+                              )}
+                              {ns === 'done' && node.outputs.length > 0 && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.3 }}
+                                  className="border-t border-emerald-100 px-4 py-3"
+                                >
+                                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">
+                                    📤 Output
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                                    {node.outputs.map(({ label, value, good }) => (
+                                      <div key={label} className="flex items-center justify-between text-xs">
+                                        <span className="text-zinc-400 font-medium">{label}</span>
+                                        <span className={`font-semibold ${good ? 'text-emerald-600' : 'text-red-500'}`}>{value}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+
+                          {/* Connector line */}
+                          {i < nodes.length - 1 && (
+                            <div className="flex justify-center py-1">
+                              <div className={`w-0.5 h-4 rounded-full transition-colors duration-500 ${
+                                nodeStates[nodes[i+1].id] !== 'idle' ? 'bg-sky-300' : 'bg-zinc-200'
+                              }`} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Final result card â€” shown after all nodes complete */}
+                <AnimatePresence>
+                  {preVetState === 'done' && preVetResult && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4 }}
+                      className={`border rounded-xl p-5 space-y-4 ${
+                        preVetResult.verdict === 'auto_approve' ? 'border-emerald-200 bg-emerald-50' :
+                        preVetResult.verdict === 'flag_for_review' ? 'border-amber-200 bg-amber-50' :
+                        'border-red-200 bg-red-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {preVetResult.verdict === 'auto_approve'    && <ShieldCheck className="w-5 h-5 text-emerald-500" />}
+                          {preVetResult.verdict === 'flag_for_review' && <ShieldAlert className="w-5 h-5 text-amber-500" />}
+                          {preVetResult.verdict === 'auto_reject'     && <ShieldX className="w-5 h-5 text-red-500" />}
+                          <div>
+                            <div className={`font-bold text-sm ${
+                              preVetResult.verdict === 'auto_approve' ? 'text-emerald-700' :
+                              preVetResult.verdict === 'flag_for_review' ? 'text-amber-700' : 'text-red-700'
+                            }`}>
+                              {preVetResult.verdict === 'auto_approve' ? 'Low Risk â€” Ready to Deploy' :
+                               preVetResult.verdict === 'flag_for_review' ? 'Medium Risk â€” Will be manually reviewed' :
+                               'High Risk â€” Deployment Blocked'}
+                            </div>
+                            <div className="text-xs text-zinc-400 mt-0.5">Analysis complete</div>
+                          </div>
+                        </div>
+                        <div className="text-3xl font-black" style={{ color: barColor, fontFamily: 'var(--font-space-grotesk)' }}>
+                          {pct}<span className="text-sm font-normal text-zinc-400">/100</span>
+                        </div>
+                      </div>
+
+                      {/* Animated score bar */}
+                      <div>
+                        <div className="h-3 bg-white/60 rounded-full overflow-hidden border border-white">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${pct}%` }}
+                            transition={{ duration: 1, ease: 'easeOut' }}
+                            className="h-full rounded-full"
+                            style={{ background: `linear-gradient(90deg, #10b981, ${barColor})` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                          <span>0 â€” Safe</span><span>65 â€” Review</span><span>100 â€” Blocked</span>
+                        </div>
+                      </div>
+
+                      {preVetResult.reasons.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Flags</p>
+                          {preVetResult.reasons.map(r => (
+                            <div key={r} className="flex items-center gap-1.5 text-xs text-zinc-600">
+                              <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              {r.replace(/_/g, ' ')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {preVetResult.can_deploy ? (
+                        <button
+                          onClick={() => setStep(4)}
+                          className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+                        >
+                          <ChevronRight className="w-4 h-4" /> Continue to Review & Deploy
+                        </button>
+                      ) : (
+                        <div className="flex items-start gap-2 p-3 bg-red-100 rounded-lg text-xs text-red-700">
+                          <ShieldX className="w-4 h-4 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-semibold mb-0.5">Deployment blocked</div>
+                            Your campaign scored too high on risk. Please go back and update your title, description, or reduce your funding goal to a realistic amount.
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Agent offline fallback */}
+                {preVetState === 'error' && (
+                  <div className="border border-zinc-200 rounded-xl p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-zinc-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-semibold text-sm text-zinc-700">Risk check unavailable</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">Agent backend is offline. You can still proceed â€” your campaign will be reviewed manually after deployment.</div>
+                      <button onClick={() => setStep(4)} className="btn-primary mt-3 px-4 py-2 text-sm flex items-center gap-2">
+                        <ChevronRight className="w-4 h-4" /> Continue Anyway
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* â”€â”€ STEP 4: Review & Deploy â”€â”€ */}
+          {step === 4 && (
             <div className="space-y-5">
               <div className={card}>
                 <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -420,21 +870,40 @@ export default function CreatePage() {
                     <h3 className="font-bold text-xl text-zinc-900 mb-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                       Campaign Deployed
                     </h3>
-                    <p className="text-zinc-500 text-sm mb-4">Your campaign is live on Sepolia. Redirecting to Explore…</p>
+                    <p className="text-zinc-500 text-sm mb-4">Your campaign is live on Sepolia. Redirecting to Exploreâ€¦</p>
                     {txHash && <TxHashBadge txHash={txHash} label="View on Etherscan" className="mx-auto" />}
                   </div>
                 ) : (
                   <>
+                    {/* Risk score summary badge */}
+                    {preVetResult && (
+                      <div className={`flex items-center gap-3 p-3 rounded-xl mb-2 ${
+                        preVetResult.verdict === 'auto_approve' ? 'bg-emerald-50 border border-emerald-200' :
+                        'bg-amber-50 border border-amber-200'
+                      }`}>
+                        {preVetResult.verdict === 'auto_approve'
+                          ? <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                          : <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />}
+                        <div className="flex-1 text-xs">
+                          <span className="font-semibold">AI Risk Score: {Math.round(preVetResult.risk_score * 100)}/100</span>
+                          <span className="text-zinc-500 ml-2">Â·</span>
+                          <span className="ml-2 text-zinc-500">
+                            {preVetResult.verdict === 'auto_approve' ? 'Low risk â€” auto approved' : 'Medium risk â€” will be reviewed after deployment'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Summary table */}
                     <div className="rounded-xl border border-slate-200 overflow-hidden">
                       {[
-                        { label: 'Title',         value: form.title || '—'                                },
+                        { label: 'Title',         value: form.title || 'â€”'                                },
                         { label: 'Category',      value: form.category                                   },
-                        { label: 'Goal',          value: form.goalEth ? `${form.goalEth} ETH` : '—'      },
+                        { label: 'Goal',          value: form.goalEth ? `${form.goalEth} ETH` : 'â€”'      },
                         { label: 'Duration',      value: `${form.durationDays} days`                     },
                         { label: 'Milestones',    value: `${form.milestones.length} defined`             },
                         { label: 'Reward Tiers',  value: `${form.rewardTiers.length} defined`            },
-                        { label: 'Creator',       value: address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'Not connected' },
+                        { label: 'Creator',       value: address ? `${address.slice(0,6)}â€¦${address.slice(-4)}` : 'Not connected' },
                         { label: 'Network',       value: 'Sepolia Testnet'                               },
                         { label: 'Platform Fee',  value: '2.5%'                                          },
                       ].map(({ label, value }, i) => (
@@ -475,7 +944,7 @@ export default function CreatePage() {
                     {txHash && !deployed && (
                       <div className="p-4 bg-zinc-50 border border-zinc-200">
                         <p className="text-xs text-zinc-600 font-semibold mb-2 flex items-center gap-2">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Transaction submitted — waiting for on-chain confirmation…
+                          <Loader2 className="w-3 h-3 animate-spin" /> Transaction submitted â€” waiting for on-chain confirmationâ€¦
                         </p>
                         <TxHashBadge txHash={txHash} />
                       </div>
@@ -489,7 +958,7 @@ export default function CreatePage() {
                       className="btn-primary w-full py-3.5 text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
                     >
                       {deploying
-                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Deploying Contract…</>
+                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Deploying Contractâ€¦</>
                         : <><Rocket className="w-4 h-4" /> Deploy Campaign Contract</>
                       }
                     </button>
@@ -515,7 +984,8 @@ export default function CreatePage() {
           >
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
-          {step < STEPS.length - 1 && (
+          {/* Step 3 (AI Check) uses its own CTA buttons â€” hide generic Next */}
+          {step < STEPS.length - 1 && step !== 3 && (
             <button
               id="next-step"
               onClick={() => setStep(s => s + 1)}
@@ -530,3 +1000,4 @@ export default function CreatePage() {
     </div>
   );
 }
+
