@@ -79,14 +79,44 @@ Funding Goal: {goal_eth:.4f} ETH
 Description:
 {description[:3000]}"""
 
+    import asyncio
     try:
         llm = _build_llm()
-        response = await llm.ainvoke([
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=human_prompt),
-        ])
-
-        raw = response.content.strip()
+        
+        # Primary call (OpenRouter) with timeout
+        try:
+            response = await asyncio.wait_for(
+                llm.ainvoke([
+                    SystemMessage(content=SYSTEM_PROMPT),
+                    HumanMessage(content=human_prompt),
+                ]),
+                timeout=12.0
+            )
+            raw = response.content.strip()
+        except Exception as e:
+            logger.warning(f"[content_check] Primary LLM failed or timed out ({e}). Falling back to NVIDIA.")
+            
+            # Fallback (NVIDIA Native API)
+            from openai import AsyncOpenAI
+            if not settings.NVIDIA_API_KEY or settings.NVIDIA_API_KEY == "nvapi--":
+                logger.error("NVIDIA_API_KEY is not set correctly in .env for fallback.")
+                raise e
+                
+            client = AsyncOpenAI(
+                base_url="https://integrate.api.nvidia.com/v1",
+                api_key=settings.NVIDIA_API_KEY
+            )
+            completion = await client.chat.completions.create(
+                model="nvidia/nemotron-3-ultra-550b-a55b",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": human_prompt}
+                ],
+                temperature=0.0,
+                top_p=0.95,
+                max_tokens=512,
+            )
+            raw = completion.choices[0].message.content.strip()
 
         # ── Strip <think>...</think> tags (some reasoning models output these) ──
         import re

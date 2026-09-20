@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowRight, Shield, Zap, RefreshCw, TrendingUp, Users, Target, Award, Vote } from 'lucide-react';
 import { CampaignCard, CampaignCardSkeleton } from '@/components/ui/CampaignCard';
+import WaveCanvas from '@/components/ui/WaveCanvas';
 import { useCampaigns } from '@/lib/useCampaigns';
 import { CATEGORIES } from '@/lib/data';
 
@@ -79,17 +80,8 @@ export default function HomePage() {
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="relative min-h-screen flex items-center justify-center pt-32 pb-24 bg-white overflow-hidden">
-        {/* Background Video */}
-        <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
-          <video 
-            src="/Use_the_uploaded_image_as_the.mp4" 
-            autoPlay 
-            loop 
-            muted 
-            playsInline 
-            className="w-full h-full object-cover object-center" 
-          />
-        </div>
+        {/* Animated Wave Background */}
+        <WaveCanvas />
         
         <div className="relative z-10 max-w-[960px] mx-auto px-6 text-center">
 

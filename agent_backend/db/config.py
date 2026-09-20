@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # image proofs and every image submission will fall through to admin review.
     OPENROUTER_VISION_MODEL: str = "meta-llama/llama-3.2-11b-vision-instruct:free"
 
+    # NVIDIA API (Fallback)
+    NVIDIA_API_KEY: str = ""
+
     # Etherscan
     ETHERSCAN_API_KEY: str = ""
     ETHERSCAN_BASE_URL: str = "https://api-sepolia.etherscan.io/api"
