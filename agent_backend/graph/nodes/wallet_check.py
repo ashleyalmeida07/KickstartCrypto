@@ -93,7 +93,11 @@ async def check_wallet_history(state: VettingState) -> dict:
             "tag": "latest",
         })
         total_tx_hex = tx_count_data.get("result", "0x0")
-        total_tx_count = int(total_tx_hex, 16) if total_tx_hex else tx_count
+        try:
+            total_tx_count = int(total_tx_hex, 16) if total_tx_hex else tx_count
+        except ValueError:
+            logger.warning(f"[wallet_check] Failed to parse Etherscan hex result: {total_tx_hex}. Falling back to page count.")
+            total_tx_count = tx_count
 
         # ── 3. Static blocklist check ─────────────────────────────────────────
         on_blocklist = address.lower() in KNOWN_SCAM_ADDRESSES

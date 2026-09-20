@@ -114,7 +114,7 @@ Description:
                 ],
                 temperature=0.0,
                 top_p=0.95,
-                max_tokens=512,
+                max_tokens=2048,
             )
             raw = completion.choices[0].message.content.strip()
 
@@ -128,7 +128,7 @@ Description:
         raw = raw.strip()
 
         # ── Try to find JSON object in the response if it's wrapped in prose ────
-        json_match = re.search(r'\{[^{}]*"content_score"[^{}]*\}', raw, re.DOTALL)
+        json_match = re.search(r'\{.*"content_score".*\}', raw, re.DOTALL)
         if json_match:
             raw = json_match.group(0)
 
