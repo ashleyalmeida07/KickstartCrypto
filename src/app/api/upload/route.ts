@@ -31,10 +31,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validate file type
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    // Validate file type.
+    // PDFs are allowed so creators can submit invoices and contracts as
+    // milestone proof — the agent backend extracts their text layer.
+    const allowed = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
+      'application/pdf',
+    ];
     if (!allowed.includes(file.type)) {
-      return NextResponse.json({ error: 'File type not allowed. Use JPG, PNG, WebP or GIF.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'File type not allowed. Use JPG, PNG, WebP, GIF or PDF.' },
+        { status: 400 },
+      );
     }
 
     // Validate file size (max 10 MB)

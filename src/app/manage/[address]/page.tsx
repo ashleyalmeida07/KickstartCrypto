@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, use, useEffect } from 'react';
+import { useState, use, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount, useWriteContract, useReadContracts, useWaitForTransactionReceipt, useBlock } from 'wagmi';
 import { formatEther } from 'viem';
@@ -8,9 +8,12 @@ import Link from 'next/link';
 import {
   Settings, Send, DollarSign, ArrowUpRight, Loader2, AlertCircle,
   CheckCircle, XCircle, Clock, Info, ExternalLink, Ban, Zap, RotateCcw,
+  ShieldCheck, ShieldAlert, ShieldQuestion,
 } from 'lucide-react';
 import { useCampaign } from '@/lib/useCampaigns';
 import { CAMPAIGN_ABI } from '@/lib/contracts';
+import { MilestoneProofModal } from '@/components/ui/MilestoneProofModal';
+import { AGENT_URL } from '@/lib/agent';
 import toast from 'react-hot-toast';
 
 function trunc(addr: string) { return `${addr.slice(0, 6)}…${addr.slice(-4)}`; }
@@ -22,6 +25,29 @@ interface MilestoneOnChain {
   released:    boolean;
   index:       number;
 }
+
+interface MilestoneProof {
+  id:                string;
+  milestone_index:   number;
+  proof_type:        string;
+  status:            string;
+  verdict:           string | null;
+  confidence:        number | null;
+  consistency_notes: string | null;
+  payout_status:     string | null;
+  created_at:        string;
+}
+
+/** Verification badge shown against each milestone. */
+const PROOF_BADGES: Record<string, { label: string; cls: string; Icon: typeof ShieldCheck }> = {
+  auto_approved:  { label: 'Verified',      cls: 'bg-emerald-100 border-emerald-200 text-emerald-700', Icon: ShieldCheck    },
+  approved:       { label: 'Verified',      cls: 'bg-emerald-100 border-emerald-200 text-emerald-700', Icon: ShieldCheck    },
+  pending_review: { label: 'In Review',     cls: 'bg-amber-100 border-amber-200 text-amber-700',       Icon: ShieldQuestion },
+  running:        { label: 'Verifying',     cls: 'bg-sky-100 border-sky-200 text-sky-700',             Icon: Loader2        },
+  pending:        { label: 'Verifying',     cls: 'bg-sky-100 border-sky-200 text-sky-700',             Icon: Loader2        },
+  rejected:       { label: 'Rejected',      cls: 'bg-red-100 border-red-200 text-red-700',             Icon: ShieldAlert    },
+  error:          { label: 'Check Failed',  cls: 'bg-zinc-100 border-zinc-200 text-zinc-600',          Icon: ShieldAlert    },
+};
 
 export default function ManagePage({ params }: { params: Promise<{ address: string }> }) {
   const { address: contractAddress } = use(params);
@@ -69,6 +95,24 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
   const [updateTitle, setUpdateTitle] = useState('');
   const [updateBody,  setUpdateBody]  = useState('');
   const [postingUpdate, setPostingUpdate] = useState(false);
+
+  // ── Milestone proof verification (LangGraph Flow 3) ─────────────────────────
+  const [proofs, setProofs] = useState<MilestoneProof[]>([]);
+  const [proofModalFor, setProofModalFor] = useState<MilestoneOnChain | null>(null);
+
+  const fetchProofs = useCallback(async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/milestone-proof/campaign/${contractAddress}`);
+      if (res.ok) setProofs(await res.json());
+    } catch {
+      // Agent backend may not be running — the page works without it
+    }
+  }, [contractAddress]);
+
+  useEffect(() => { fetchProofs(); }, [fetchProofs]);
+
+  /** Latest proof for a milestone, if any — the list arrives newest first. */
+  const proofFor = (index: number) => proofs.find(p => p.milestone_index === index);
 
   // ── On-chain clock ──────────────────────────────────────────────────────────
   const { data: latestBlock } = useBlock({ watch: true });
@@ -395,7 +439,7 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
             </div>
           )}
 
-          {/* ── Milestones display (informational) ── */}
+          {/* ── Milestones + proof verification ── */}
           {milestones.length > 0 && (
             <div className="bg-white border border-zinc-200 p-6">
               <h2 className="font-bold text-zinc-900 mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -403,27 +447,70 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
                 Milestones
               </h2>
               <div className="text-xs text-zinc-500 bg-zinc-50 border border-zinc-200 p-3 mb-4 leading-relaxed">
-                Milestones are <strong>informational</strong>. Funds are released automatically when you call Settle after the deadline.
+                Submit proof for a milestone to have it verified. A verified milestone is
+                marked <strong>cleared for release</strong> in the platform&apos;s records; the
+                ETH itself still moves when Settle is called after the deadline.
               </div>
               <div className="space-y-3">
                 {milestones.map(m => {
                   const milestoneEth = (m.percentage / 100) * raisedEth;
+                  const proof  = proofFor(m.index);
+                  const badge  = proof ? PROOF_BADGES[proof.status] : undefined;
+                  const cleared = proof?.payout_status === 'ready_for_release' || m.released;
+                  const busy    = proof?.status === 'pending' || proof?.status === 'running';
+                  const canSubmitProof = isCreator && !cleared && !busy && proof?.status !== 'pending_review';
+
                   return (
-                    <div key={m.index} className={`border p-4 ${m.released ? 'border-emerald-200 bg-emerald-50' : 'border-zinc-200'}`}>
+                    <div key={m.index} className={`border p-4 ${cleared ? 'border-emerald-200 bg-emerald-50' : 'border-zinc-200'}`}>
                       <div className="flex items-start justify-between gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <span className="text-sm font-semibold text-zinc-900">{m.title}</span>
                           <span className="text-xs text-zinc-400 ml-2">({m.percentage}%)</span>
                         </div>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide shrink-0 ${
-                          m.released ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-zinc-100 border-zinc-200 text-zinc-500'
-                        }`}>
-                          {m.released ? 'Released' : 'Pending'}
-                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {badge && (
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide flex items-center gap-1 ${badge.cls}`}>
+                              <badge.Icon className={`w-3 h-3 ${busy ? 'animate-spin' : ''}`} />
+                              {badge.label}
+                            </span>
+                          )}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 border uppercase tracking-wide ${
+                            m.released ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-zinc-100 border-zinc-200 text-zinc-500'
+                          }`}>
+                            {m.released ? 'Released' : 'Pending'}
+                          </span>
+                        </div>
                       </div>
+
                       <div className="text-xs text-zinc-500 mt-1">
                         ~{milestoneEth.toFixed(4)} ETH (after 2.5% fee: ~{(milestoneEth * 0.975).toFixed(4)} ETH)
                       </div>
+
+                      {proof?.consistency_notes && (
+                        <div className="text-xs text-zinc-500 mt-2 pt-2 border-t border-zinc-100 leading-relaxed">
+                          <span className="font-semibold text-zinc-600">Verification: </span>
+                          {proof.consistency_notes}
+                          {proof.confidence !== null && (
+                            <span className="text-zinc-400"> ({Math.round(proof.confidence * 100)}% confidence)</span>
+                          )}
+                        </div>
+                      )}
+
+                      {canSubmitProof && (
+                        <button
+                          onClick={() => setProofModalFor(m)}
+                          className="mt-3 w-full py-2 text-xs font-semibold border border-zinc-900 text-zinc-900 hover:bg-zinc-900 hover:text-white transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {proof?.status === 'rejected' ? 'Resubmit Proof' : 'Submit Proof'}
+                        </button>
+                      )}
+
+                      {proof?.status === 'pending_review' && (
+                        <div className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 p-2">
+                          Awaiting admin review — you&apos;ll be able to resubmit if it&apos;s rejected.
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -528,6 +615,23 @@ export default function ManagePage({ params }: { params: Promise<{ address: stri
           </div>
         </div>
       </div>
+
+      {/* ── Milestone proof submission ── */}
+      {proofModalFor && (
+        <MilestoneProofModal
+          isOpen
+          onClose={() => setProofModalFor(null)}
+          contractAddress={contractAddress}
+          creatorAddress={userAddress ?? campaign.creator}
+          milestone={{
+            index:      proofModalFor.index,
+            title:      proofModalFor.title,
+            percentage: proofModalFor.percentage,
+          }}
+          trancheEth={(proofModalFor.percentage / 100) * raisedEth}
+          onResolved={fetchProofs}
+        />
+      )}
     </div>
   );
 }

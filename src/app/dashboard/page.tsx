@@ -318,23 +318,23 @@ export default function DashboardPage() {
   // Not authenticated at all — sign-in gate
   if (!isAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center pt-20 px-4">
+      <div className="min-h-screen bg-white flex items-center justify-center pt-20 px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white border border-zinc-200 shadow-sm p-12 text-center max-w-md w-full"
+          className="border border-[#E5E5E5] rounded-2xl p-12 text-center max-w-md w-full"
         >
-          <div className="w-14 h-14 bg-zinc-900 flex items-center justify-center mx-auto mb-6">
-            <Wallet2 className="w-7 h-7 text-white" />
+          <div className="w-14 h-14 border border-[#E5E5E5] rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Wallet2 className="w-6 h-6 text-black/40" />
           </div>
-          <h2 className="text-2xl font-bold text-zinc-900 mb-3" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+          <h2 className="text-[28px] font-normal tracking-[-0.03em] text-black mb-3">
             Sign In to Continue
           </h2>
-          <p className="text-zinc-500 text-sm leading-relaxed mb-7">
+          <p className="text-black/40 text-sm leading-relaxed mb-8">
             Connect your wallet or sign in with Google to view your campaigns, contributions and votes.
           </p>
           <Link href="/auth/login">
-            <button className="btn-primary w-full">Sign In</button>
+            <button className="btn-primary w-full justify-center">Sign In</button>
           </Link>
         </motion.div>
       </div>
@@ -345,46 +345,51 @@ export default function DashboardPage() {
   const showWalletNudge = !!session && !isConnected;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-28 pb-20">
-
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <LayoutDashboard className="w-5 h-5 text-zinc-400" />
-              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest" style={{ fontFamily: 'var(--font-space-grotesk)' }}>Dashboard</span>
+    <div className="bg-white min-h-screen">
+      {/* ── Page Header ── */}
+      <div className="border-b border-[#E5E5E5] pt-28 pb-10">
+        <div className="max-w-[1280px] mx-auto px-6">
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
+              <div>
+                <span className="section-eyebrow mb-3 block">Dashboard</span>
+                <h1
+                  className="text-[clamp(28px,4vw,48px)] font-normal tracking-[-0.04em] leading-[1.05] text-black"
+                  style={{ fontFamily: 'var(--font-inter)' }}
+                >
+                  {displayName}
+                </h1>
+                {address
+                  ? <p className="text-xs text-black/30 font-mono mt-2">{address}</p>
+                  : session?.user?.email && <p className="text-xs text-black/30 mt-2">{session.user.email}</p>
+                }
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => refetch()} className="p-2.5 border border-[#E5E5E5] hover:border-black/30 text-black/30 hover:text-black transition-all rounded-full" title="Refresh">
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <Link href="/settings">
+                  <button className="btn-secondary py-2.5 px-5 text-sm">
+                    <Settings className="w-4 h-4" /> Settings
+                  </button>
+                </Link>
+                <Link href="/create">
+                  <button className="btn-primary py-2.5 px-5 text-sm">
+                    <Plus className="w-4 h-4" /> Launch Campaign
+                  </button>
+                </Link>
+              </div>
             </div>
-            <h1 className="text-3xl font-bold text-zinc-900" style={{ fontFamily: 'var(--font-space-grotesk)', letterSpacing: '-0.03em' }}>
-              {displayName}
-            </h1>
-            {address
-              ? <p className="text-xs text-zinc-400 font-mono mt-1">{address}</p>
-              : session?.user?.email && <p className="text-xs text-zinc-400 mt-1">{session.user.email}</p>
-            }
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => refetch()} className="p-2 border border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 transition-colors" title="Refresh">
-              <RefreshCw className="w-4 h-4" />
-            </button>
-            <Link href="/settings">
-              <button className="btn-secondary py-2 px-4 text-sm flex items-center gap-2">
-                <Settings className="w-4 h-4" /> Settings
-              </button>
-            </Link>
-            <Link href="/create">
-              <button className="btn-primary flex items-center gap-2 py-2 px-4 text-sm">
-                <Plus className="w-4 h-4" /> Launch Campaign
-              </button>
-            </Link>
-          </div>
+          </motion.div>
         </div>
+      </div>
 
-        {/* Wallet nudge — only for email-only sessions */}
+      <div className="max-w-[1280px] mx-auto px-6 py-10">
+        {/* Wallet nudge */}
         {showWalletNudge && <WalletNudge onConnect={() => openConnectModal?.()} />}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[#E5E5E5] border border-[#E5E5E5] rounded-2xl overflow-hidden mb-10">
           {[
             { label: 'Campaigns Created', value: !address ? '—' : isLoading ? '…' : myCampaigns.length.toString() },
             { label: 'Active',            value: !address ? '—' : isLoading ? '…' : activeCount.toString() },
@@ -396,26 +401,24 @@ export default function DashboardPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.05 }}
-              className="bg-white border border-zinc-200 p-4 hover:border-zinc-400 transition-colors"
+              className="text-center py-8 px-4"
             >
-              <div className="text-2xl font-bold text-zinc-900 mb-0.5" style={{ fontFamily: 'var(--font-space-grotesk)' }}>{value}</div>
-              <div className="text-xs text-zinc-500">{label}</div>
+              <div className="text-[28px] font-normal tracking-[-0.04em] text-black leading-none mb-1.5">{value}</div>
+              <div className="section-eyebrow">{label}</div>
             </motion.div>
           ))}
         </div>
-      </motion.div>
 
       {/* Tabs */}
-      <div className="flex border-b border-zinc-200 mb-8 overflow-x-auto">
+      <div className="flex border-b border-[#E5E5E5] mb-8 overflow-x-auto">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             id={`dash-tab-${id}`}
             onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap -mb-px ${
-              activeTab === id ? 'border-zinc-900 text-zinc-900' : 'border-transparent text-zinc-400 hover:text-zinc-700 hover:border-zinc-300'
+            className={`flex items-center gap-2 px-5 py-3.5 text-[13px] font-medium border-b-2 transition-all whitespace-nowrap -mb-px ${
+              activeTab === id ? 'border-black text-black' : 'border-transparent text-black/40 hover:text-black hover:border-black/20'
             }`}
-            style={{ fontFamily: 'var(--font-space-grotesk)' }}
           >
             <Icon className="w-4 h-4" />{label}
           </button>
@@ -490,6 +493,7 @@ export default function DashboardPage() {
           )}
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -506,12 +510,12 @@ function EmptyState({
   hint?:       string;
 }) {
   return (
-    <div className="border border-zinc-200 bg-white p-12 text-center">
-      <div className="flex justify-center mb-5 opacity-60">{icon}</div>
-      <h3 className="text-base font-bold text-zinc-800 mb-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>{title}</h3>
-      <p className="text-zinc-500 text-sm max-w-sm mx-auto mb-5">{description}</p>
-      {action && <div className="flex justify-center mb-4">{action}</div>}
-      {hint && <p className="text-xs text-zinc-400 bg-zinc-50 border border-zinc-200 px-4 py-2.5 inline-block">{hint}</p>}
+    <div className="border border-[#E5E5E5] rounded-2xl bg-white p-16 text-center">
+      <div className="flex justify-center mb-6 opacity-30">{icon}</div>
+      <h3 className="text-[20px] font-normal tracking-[-0.02em] text-black mb-2">{title}</h3>
+      <p className="text-black/40 text-sm max-w-sm mx-auto mb-6">{description}</p>
+      {action && <div className="flex justify-center mb-5">{action}</div>}
+      {hint && <p className="text-xs text-black/30 border border-[#E5E5E5] rounded-full px-4 py-2 inline-block">{hint}</p>}
     </div>
   );
 }

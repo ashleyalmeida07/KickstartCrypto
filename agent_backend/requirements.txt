@@ -22,3 +22,4 @@ pydantic-settings>=2.5.0
 
 # ─── Utilities ───────────────────────────────────────────────
 tenacity>=8.1.0,<9.0.0           # pinned to langchain-core's constraint
+pypdf>=5.0.0                     # PDF text extraction for Flow 3 proof parsing

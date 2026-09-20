@@ -8,6 +8,15 @@ Endpoints:
   POST  /pre-vet                           — run risk check on form data BEFORE deploy
   POST  /vet-campaign                      — trigger campaign vetting (post-deploy)
   GET   /vetting-status/{contract_address} — poll vetting result
+  POST  /donor-support/query               — submit a donor support query
+  GET   /donor-support/ticket/{id}         — poll a support ticket
+  GET   /donor-support/tickets             — admin: escalated ticket queue
+  POST  /donor-support/resolve/{id}        — admin: resolve a support ticket
+  POST  /milestone-proof/submit            — submit milestone proof (async, 202)
+  GET   /milestone-proof/queue             — admin: proofs awaiting review
+  GET   /milestone-proof/campaign/{addr}   — all proofs for one campaign
+  GET   /milestone-proof/{proof_id}        — poll a proof verification result
+  POST  /milestone-proof/resolve/{id}      — admin: approve/reject a queued proof
   GET   /health                            — health check
 """
 from __future__ import annotations
@@ -16,7 +25,10 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -40,8 +52,17 @@ from models.support_schemas import (
     TicketStatus,
     SupportState,
 )
+from models.milestone_schemas import (
+    SubmitProofRequest,
+    SubmitProofResponse,
+    ProofStatusResponse,
+    ResolveProofRequest,
+    ProofStatus,
+    ProofType,
+)
 from graph import vetting_graph
 from graph.donor_support import donor_support_graph
+from graph.milestone_proof import milestone_proof_graph
 from graph.nodes.wallet_check import check_wallet_history
 from graph.nodes.content_check import content_authenticity_check
 from graph.nodes.risk_scorer import risk_scorer
@@ -86,6 +107,56 @@ async def lifespan(app: FastAPI):
         """)
     logger.info("✅ support_tickets table ready.")
 
+    # ── Ensure Flow 3 milestone proof tables exist ───────────────────────────
+    # Mirrors database/milestone_proof_migration.sql so the service is
+    # self-bootstrapping in dev; run the migration file in prod.
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS milestone_proofs (
+                id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                campaign_id         UUID REFERENCES campaigns(id)  ON DELETE CASCADE,
+                campaign_address    TEXT NOT NULL,
+                milestone_id        UUID REFERENCES milestones(id) ON DELETE CASCADE,
+                milestone_index     INTEGER NOT NULL,
+                submitted_by        TEXT NOT NULL,
+                proof_type          TEXT NOT NULL,
+                proof_url           TEXT,
+                proof_text          TEXT,
+                claimed_spend_wei   NUMERIC,
+                parsed_content      TEXT,
+                ocr_confidence      NUMERIC,
+                onchain_outflow_wei NUMERIC,
+                onchain_tx_count    INTEGER,
+                spend_match_score   NUMERIC,
+                consistency_score   NUMERIC,
+                consistency_notes   TEXT,
+                confidence          NUMERIC,
+                reasons             TEXT,
+                status              TEXT NOT NULL DEFAULT 'pending',
+                verdict             TEXT,
+                routing_decision    TEXT,
+                tranche_wei         NUMERIC,
+                reviewed_by         TEXT,
+                review_notes        TEXT,
+                reviewed_at         TIMESTAMPTZ,
+                created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                verified_at         TIMESTAMPTZ
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proofs_campaign ON milestone_proofs(campaign_address)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_proofs_status ON milestone_proofs(status)"
+        )
+        await conn.execute("""
+            ALTER TABLE milestones
+                ADD COLUMN IF NOT EXISTS payout_status    TEXT DEFAULT 'locked',
+                ADD COLUMN IF NOT EXISTS proof_status     TEXT DEFAULT 'none',
+                ADD COLUMN IF NOT EXISTS last_verified_at TIMESTAMPTZ
+        """)
+    logger.info("✅ milestone_proofs table ready.")
+
     # ── Auto-retry pending/crashed campaigns ──────────────────────────────────
     async with pool.acquire() as conn:
         stuck = await conn.fetch(
@@ -100,6 +171,24 @@ async def lifespan(app: FastAPI):
             asyncio.create_task(run_vetting_graph(row["contract_address"]))
     else:
         logger.info("✅ No pending campaigns to retry.")
+
+    # ── Auto-retry proofs interrupted mid-verification ───────────────────────
+    async with pool.acquire() as conn:
+        stuck_proofs = await conn.fetch(
+            "SELECT id::text AS id, campaign_address, milestone_index FROM milestone_proofs "
+            "WHERE status IN ('pending', 'running') "
+            "ORDER BY created_at DESC LIMIT 50"
+        )
+    if stuck_proofs:
+        logger.info(f"🔄 Found {len(stuck_proofs)} proof(s) awaiting verification — queuing now…")
+        for row in stuck_proofs:
+            logger.info(
+                f"   → Queuing proof {row['id']} "
+                f"({row['campaign_address']} #{row['milestone_index']})"
+            )
+            asyncio.create_task(run_milestone_proof_graph(row["id"]))
+    else:
+        logger.info("✅ No pending proofs to retry.")
 
     yield
     logger.info("🛑 Agent backend shutting down…")
@@ -487,6 +576,496 @@ async def resolve_ticket(ticket_id: str, body: ResolveTicketRequest):
 
     logger.info(f"[resolve_ticket] ticket={ticket_id} action={body.action} by={body.resolved_by}")
     return {"ticket_id": ticket_id, "action": body.action, "status": new_status}
+
+
+# ─── Milestone Proof Verification (Flow 3) endpoints ─────────────────────────
+
+WEI_PER_ETH = Decimal("1000000000000000000")
+
+
+def _eth(wei) -> float | None:
+    """NUMERIC wei column → ETH float."""
+    if wei is None:
+        return None
+    return float(Decimal(str(wei)) / WEI_PER_ETH)
+
+
+def _valid_uuid(value: str) -> str:
+    """Reject malformed ids before they reach a ::uuid cast."""
+    try:
+        return str(uuid.UUID(value))
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(status_code=400, detail="Malformed proof id.")
+
+
+def _parse_reasons(raw) -> list[str] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, list) else [str(parsed)]
+    except (json.JSONDecodeError, TypeError):
+        return [str(raw)]
+
+
+async def run_milestone_proof_graph(proof_id: str) -> None:
+    """
+    Execute the milestone proof verification graph in the background.
+    Marks the proof 'running' first, then runs the full graph.
+    """
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT campaign_address, milestone_index, submitted_by,
+                   proof_type, proof_url, proof_text,
+                   claimed_spend_wei::text AS claimed_spend_wei
+            FROM milestone_proofs
+            WHERE id = $1::uuid
+            """,
+            proof_id,
+        )
+
+    if row is None:
+        logger.error(f"[proof_graph] proof {proof_id} not found")
+        return
+
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE milestone_proofs SET status = 'running' WHERE id = $1::uuid",
+                proof_id,
+            )
+    except Exception as exc:
+        logger.error(f"[proof_graph] Could not mark as running: {exc}")
+
+    claimed_eth = None
+    if row["claimed_spend_wei"]:
+        claimed_eth = float(Decimal(row["claimed_spend_wei"]) / WEI_PER_ETH)
+
+    initial_state = {
+        "proof_id":          proof_id,
+        "campaign_address":  row["campaign_address"],
+        "milestone_index":   row["milestone_index"],
+        "submitted_by":      row["submitted_by"],
+        "proof_type":        row["proof_type"],
+        "proof_url":         row["proof_url"],
+        "proof_text":        row["proof_text"],
+        "claimed_spend_eth": claimed_eth,
+    }
+
+    try:
+        result = await milestone_proof_graph.ainvoke(initial_state)
+        # The graph state is a Pydantic model, so the return may be a dict of
+        # channels or the coerced model depending on LangGraph's output mode.
+        summary = result if isinstance(result, dict) else dict(result)
+        logger.info(
+            f"[proof_graph] Completed: {proof_id} → "
+            f"status={summary.get('proof_status')} confidence={summary.get('confidence')} "
+            f"decision={summary.get('routing_decision')}"
+        )
+    except Exception as exc:
+        logger.error(f"[proof_graph] Graph error: {exc}", exc_info=True)
+        try:
+            async with pool.acquire() as conn:
+                # Only overwrite if the graph never reached notify — a failure
+                # after the verdict was written must not erase it.
+                await conn.execute(
+                    """
+                    UPDATE milestone_proofs
+                    SET status = 'error', verified_at = NOW(), reasons = $2
+                    WHERE id = $1::uuid
+                      AND status IN ('pending', 'running')
+                    """,
+                    proof_id,
+                    json.dumps([f"graph_error: {exc}"]),
+                )
+        except Exception:
+            pass
+
+
+@app.post("/milestone-proof/submit", response_model=SubmitProofResponse, status_code=202)
+async def submit_milestone_proof(
+    body: SubmitProofRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Submit proof that a milestone was completed, to unlock its tranche.
+
+    Returns 202 immediately; the LangGraph flow runs in the background.
+    Poll GET /milestone-proof/{proof_id} for the verdict.
+
+    Accepted proof types: image (receipts, progress photos), pdf (invoices,
+    contracts), link (GitHub commit, deployed URL, video), or text alone.
+    A short text description is allowed alongside any of the others.
+    """
+    address = body.campaign_address.lower()
+
+    # ── Shape validation ─────────────────────────────────────────────────────
+    if body.proof_type == ProofType.TEXT:
+        if not (body.proof_text or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail="proof_text is required when proof_type is 'text'.",
+            )
+    elif not (body.proof_url or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"proof_url is required when proof_type is '{body.proof_type.value}'.",
+        )
+
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        milestone = await conn.fetchrow(
+            """
+            SELECT c.id::text AS campaign_id, c.creator_address, c.title,
+                   m.id::text AS milestone_id, m.title AS milestone_title,
+                   m.payout_status
+            FROM campaigns c
+            JOIN milestones m ON m.campaign_id = c.id
+            WHERE LOWER(c.contract_address) = $1
+              AND m.milestone_index = $2
+            """,
+            address,
+            body.milestone_index,
+        )
+
+    if milestone is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No milestone at index {body.milestone_index} for campaign {address}. "
+                "Ensure the campaign and its milestone plan are saved to the database."
+            ),
+        )
+
+    # ── Only the creator can submit proof for their own milestone ────────────
+    if body.submitted_by.lower() != (milestone["creator_address"] or "").lower():
+        raise HTTPException(
+            status_code=403,
+            detail="Only the campaign creator can submit milestone proof.",
+        )
+
+    # ── Don't re-verify an already cleared tranche ───────────────────────────
+    if milestone["payout_status"] in ("ready_for_release", "released"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Milestone '{milestone['milestone_title']}' is already verified.",
+        )
+
+    # ── One verification at a time per milestone ─────────────────────────────
+    async with pool.acquire() as conn:
+        inflight = await conn.fetchrow(
+            """
+            SELECT id::text AS id, status FROM milestone_proofs
+            WHERE milestone_id = $1::uuid
+              AND status IN ('pending', 'running', 'pending_review')
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            milestone["milestone_id"],
+        )
+
+    if inflight:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A proof for this milestone is already {inflight['status']} "
+                f"(id {inflight['id']})."
+            ),
+        )
+
+    claimed_wei = (
+        (Decimal(str(body.claimed_spend_eth)) * WEI_PER_ETH).quantize(Decimal("1"))
+        if body.claimed_spend_eth is not None else None
+    )
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO milestone_proofs
+                (campaign_id, campaign_address, milestone_id, milestone_index,
+                 submitted_by, proof_type, proof_url, proof_text,
+                 claimed_spend_wei, status)
+            VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7, $8, $9, 'pending')
+            RETURNING id::text
+            """,
+            milestone["campaign_id"],
+            address,
+            milestone["milestone_id"],
+            body.milestone_index,
+            body.submitted_by.lower(),
+            body.proof_type.value,
+            (body.proof_url or "").strip() or None,
+            (body.proof_text or "").strip() or None,
+            claimed_wei,
+        )
+        await conn.execute(
+            "UPDATE milestones SET proof_status = 'submitted' WHERE id = $1::uuid",
+            milestone["milestone_id"],
+        )
+
+    proof_id = row["id"]
+    logger.info(
+        f"[POST /milestone-proof/submit] proof={proof_id} campaign={address} "
+        f"milestone={body.milestone_index} type={body.proof_type.value}"
+    )
+
+    background_tasks.add_task(run_milestone_proof_graph, proof_id)
+
+    return SubmitProofResponse(
+        proof_id=proof_id,
+        status=ProofStatus.RUNNING.value,
+        message="Proof received and being verified. Poll /milestone-proof/{id} for the result.",
+    )
+
+
+@app.get("/milestone-proof/queue")
+async def milestone_proof_queue():
+    """Admin: proofs the flow could not decide on, awaiting human review."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT p.id::text AS id, p.campaign_address, p.milestone_index,
+                   p.submitted_by, p.proof_type, p.proof_url, p.proof_text,
+                   p.claimed_spend_wei::text, p.onchain_outflow_wei::text,
+                   p.onchain_tx_count, p.tranche_wei::text,
+                   p.ocr_confidence, p.spend_match_score, p.consistency_score,
+                   p.consistency_notes, p.confidence, p.reasons, p.status,
+                   p.verdict, p.parsed_content, p.created_at, p.verified_at,
+                   c.title AS campaign_title,
+                   m.title AS milestone_title, m.description AS milestone_description,
+                   m.percentage
+            FROM milestone_proofs p
+            LEFT JOIN campaigns  c ON c.id = p.campaign_id
+            LEFT JOIN milestones m ON m.id = p.milestone_id
+            WHERE p.status IN ('pending_review', 'pending', 'running', 'error')
+            ORDER BY p.created_at DESC
+            LIMIT 100
+            """
+        )
+
+    return [
+        {
+            "id":                    r["id"],
+            "campaign_address":      r["campaign_address"],
+            "campaign_title":        r["campaign_title"],
+            "milestone_index":       r["milestone_index"],
+            "milestone_title":       r["milestone_title"],
+            "milestone_description": r["milestone_description"],
+            "percentage":            r["percentage"],
+            "submitted_by":          r["submitted_by"],
+            "proof_type":            r["proof_type"],
+            "proof_url":             r["proof_url"],
+            "proof_text":            r["proof_text"],
+            "parsed_content":        (r["parsed_content"] or "")[:2000] or None,
+            "claimed_spend_eth":     _eth(r["claimed_spend_wei"]),
+            "onchain_outflow_eth":   _eth(r["onchain_outflow_wei"]),
+            "onchain_tx_count":      r["onchain_tx_count"],
+            "tranche_eth":           _eth(r["tranche_wei"]),
+            "ocr_confidence":        float(r["ocr_confidence"])    if r["ocr_confidence"]    is not None else None,
+            "spend_match_score":     float(r["spend_match_score"]) if r["spend_match_score"] is not None else None,
+            "consistency_score":     float(r["consistency_score"]) if r["consistency_score"] is not None else None,
+            "consistency_notes":     r["consistency_notes"],
+            "confidence":            float(r["confidence"])        if r["confidence"]        is not None else None,
+            "reasons":               _parse_reasons(r["reasons"]),
+            "status":                r["status"],
+            "verdict":               r["verdict"],
+            "created_at":            r["created_at"],
+            "verified_at":           r["verified_at"],
+        }
+        for r in rows
+    ]
+
+
+@app.get("/milestone-proof/campaign/{contract_address}")
+async def milestone_proofs_for_campaign(contract_address: str):
+    """Every proof submitted for one campaign, newest first — used by the creator's manage page."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT p.id::text AS id, p.milestone_index, p.proof_type, p.proof_url,
+                   p.status, p.verdict, p.confidence, p.consistency_notes,
+                   p.claimed_spend_wei::text, p.onchain_outflow_wei::text,
+                   p.tranche_wei::text, p.reasons, p.review_notes,
+                   p.created_at, p.verified_at,
+                   m.title AS milestone_title, m.payout_status
+            FROM milestone_proofs p
+            LEFT JOIN milestones m ON m.id = p.milestone_id
+            WHERE LOWER(p.campaign_address) = LOWER($1)
+            ORDER BY p.created_at DESC
+            LIMIT 100
+            """,
+            contract_address,
+        )
+
+    return [
+        {
+            "id":                  r["id"],
+            "milestone_index":     r["milestone_index"],
+            "milestone_title":     r["milestone_title"],
+            "proof_type":          r["proof_type"],
+            "proof_url":           r["proof_url"],
+            "status":              r["status"],
+            "verdict":             r["verdict"],
+            "confidence":          float(r["confidence"]) if r["confidence"] is not None else None,
+            "consistency_notes":   r["consistency_notes"],
+            "claimed_spend_eth":   _eth(r["claimed_spend_wei"]),
+            "onchain_outflow_eth": _eth(r["onchain_outflow_wei"]),
+            "tranche_eth":         _eth(r["tranche_wei"]),
+            "payout_status":       r["payout_status"],
+            "reasons":             _parse_reasons(r["reasons"]),
+            "review_notes":        r["review_notes"],
+            "created_at":          r["created_at"],
+            "verified_at":         r["verified_at"],
+        }
+        for r in rows
+    ]
+
+
+@app.get("/milestone-proof/{proof_id}", response_model=ProofStatusResponse)
+async def get_milestone_proof(proof_id: str):
+    """Poll the verification result for a single proof submission."""
+    pid = _valid_uuid(proof_id)
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT p.id::text AS id, p.campaign_address, p.milestone_index,
+                   p.proof_type, p.status, p.verdict, p.confidence,
+                   p.ocr_confidence, p.spend_match_score, p.consistency_score,
+                   p.consistency_notes, p.onchain_outflow_wei::text,
+                   p.claimed_spend_wei::text, p.tranche_wei::text,
+                   p.reasons, p.created_at, p.verified_at,
+                   m.title AS milestone_title, m.payout_status
+            FROM milestone_proofs p
+            LEFT JOIN milestones m ON m.id = p.milestone_id
+            WHERE p.id = $1::uuid
+            """,
+            pid,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proof not found.")
+
+    return ProofStatusResponse(
+        proof_id            = row["id"],
+        campaign_address    = row["campaign_address"],
+        milestone_index     = row["milestone_index"],
+        milestone_title     = row["milestone_title"],
+        proof_type          = row["proof_type"],
+        status              = row["status"],
+        verdict             = row["verdict"],
+        confidence          = float(row["confidence"])        if row["confidence"]        is not None else None,
+        ocr_confidence      = float(row["ocr_confidence"])    if row["ocr_confidence"]    is not None else None,
+        spend_match_score   = float(row["spend_match_score"]) if row["spend_match_score"] is not None else None,
+        consistency_score   = float(row["consistency_score"]) if row["consistency_score"] is not None else None,
+        consistency_notes   = row["consistency_notes"],
+        onchain_outflow_eth = _eth(row["onchain_outflow_wei"]),
+        claimed_spend_eth   = _eth(row["claimed_spend_wei"]),
+        tranche_eth         = _eth(row["tranche_wei"]),
+        payout_status       = row["payout_status"],
+        reasons             = _parse_reasons(row["reasons"]),
+        created_at          = row["created_at"],
+        verified_at         = row["verified_at"],
+    )
+
+
+@app.post("/milestone-proof/resolve/{proof_id}")
+async def resolve_milestone_proof(proof_id: str, body: ResolveProofRequest):
+    """
+    Admin: decide a proof the flow routed to the queue.
+
+    action = 'approve' → milestone verified, tranche cleared for release
+    action = 'reject'  → milestone rejected, tranche withheld
+
+    This does not resume the graph. Every node has already run and written its
+    output; a human override only needs to replace the verdict.
+    """
+    if body.action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action must be approve | reject")
+
+    pid  = _valid_uuid(proof_id)
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT p.status, p.milestone_id::text AS milestone_id, p.campaign_address,
+                   p.milestone_index, m.title AS milestone_title
+            FROM milestone_proofs p
+            LEFT JOIN milestones m ON m.id = p.milestone_id
+            WHERE p.id = $1::uuid
+            """,
+            pid,
+        )
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Proof not found.")
+
+    if row["status"] not in ("pending_review", "error"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Proof is in status '{row['status']}' — only queued proofs can be resolved.",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    if body.action == "approve":
+        proof_status, verdict = ProofStatus.APPROVED.value, "admin_approved"
+        milestone_status, milestone_proof_status, payout_status = (
+            "approved", "verified", "ready_for_release",
+        )
+    else:
+        proof_status, verdict = ProofStatus.REJECTED.value, "rejected"
+        milestone_status, milestone_proof_status, payout_status = (
+            "rejected", "rejected", "withheld",
+        )
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                UPDATE milestone_proofs
+                SET status       = $1,
+                    verdict      = $2,
+                    review_notes = $3,
+                    reviewed_by  = $4,
+                    reviewed_at  = $5,
+                    verified_at  = COALESCE(verified_at, $5)
+                WHERE id = $6::uuid
+                """,
+                proof_status, verdict, body.review_notes, body.reviewed_by, now, pid,
+            )
+            if row["milestone_id"]:
+                await conn.execute(
+                    """
+                    UPDATE milestones
+                    SET status           = $1,
+                        proof_status     = $2,
+                        payout_status    = $3,
+                        last_verified_at = $4
+                    WHERE id = $5::uuid
+                    """,
+                    milestone_status, milestone_proof_status, payout_status, now,
+                    row["milestone_id"],
+                )
+
+    logger.info(
+        f"[resolve_proof] proof={pid} action={body.action} by={body.reviewed_by} "
+        f"→ milestone '{row['milestone_title']}' payout={payout_status}"
+    )
+
+    return {
+        "proof_id":      pid,
+        "action":        body.action,
+        "status":        proof_status,
+        "payout_status": payout_status,
+    }
 
 
 # ─── Dev entrypoint ───────────────────────────────────────────────────────────

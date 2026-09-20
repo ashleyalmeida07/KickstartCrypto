@@ -12,6 +12,7 @@ import {
   Target, Calendar, ArrowUpRight,
 } from 'lucide-react';
 import { formatEther } from 'viem';
+import { MilestoneProofQueue } from '@/components/ui/MilestoneProofQueue';
 
 interface AdminCampaign {
   id:                    string;
@@ -383,6 +384,11 @@ export default function AdminPage() {
           {analytics.topByRaised.length === 0 && <p className="text-xs text-zinc-400 text-center py-4">No data yet.</p>}
         </div>
       </motion.div>
+
+      {/* ── Milestone Proof Queue (LangGraph Flow 3) ──────────────────────────── */}
+      <div className="mt-8">
+        <MilestoneProofQueue />
+      </div>
 
       {/* ── Campaign Management Table ──────────────────────────────────────────── */}
       <div className="flex items-center gap-2 mb-3 mt-8">

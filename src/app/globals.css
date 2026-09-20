@@ -5,24 +5,24 @@
   --font-space-grotesk: 'Space Grotesk', sans-serif;
   --font-inter: 'Inter', sans-serif;
 
-  /* Monochrome palette */
-  --color-bg:          #FAFAFA;
+  /* NexStudio-inspired monochrome palette */
+  --color-bg:          #FFFFFF;
   --color-surface:     #FFFFFF;
-  --color-surface-2:   #F4F4F5;
-  --color-surface-3:   #E4E4E7;
+  --color-surface-2:   #F7F7F7;
+  --color-surface-3:   #EFEFEF;
 
   /* Text */
-  --color-text:        #09090B;
-  --color-text-muted:  #71717A;
-  --color-text-subtle: #A1A1AA;
+  --color-text:        #000000;
+  --color-text-muted:  #3F3F46;
+  --color-text-subtle: #71717A;
 
-  /* Borders */
-  --color-border:      #E4E4E7;
+  /* Borders — very subtle */
+  --color-border:        #E5E5E5;
   --color-border-strong: #D4D4D8;
 
-  /* Accent — single brand color */
-  --color-accent:      #00C896;
-  --color-accent-dim:  rgba(0, 200, 150, 0.12);
+  /* Brand accent — kept for blockchain/status UI only */
+  --color-accent:       #00C896;
+  --color-accent-dim:   rgba(0, 200, 150, 0.12);
   --color-accent-hover: #00B085;
 
   /* Status */
@@ -50,27 +50,46 @@ body {
   line-height: 1.6;
 }
 
-/* Headings */
+/* ── Typography — Editorial ──────────────────────────────────────────────── */
+/* Headings default to regular weight — editorial style */
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-space-grotesk);
-  font-weight: 700;
+  font-family: var(--font-inter);
+  font-weight: 400;
   letter-spacing: -0.03em;
-  line-height: 1.15;
+  line-height: 1.05;
 }
 
-/* Scrollbar — minimal */
+/* ── Scrollbar — minimal ─────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--color-surface-2); }
 ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-subtle); }
 
-/* ── Accent Text ─────────────────────────────────────────────────────────── */
+/* ── Section Eyebrow Label ───────────────────────────────────────────────── */
+.section-eyebrow {
+  font-family: var(--font-inter);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+/* ── Editorial Heading ───────────────────────────────────────────────────── */
+.editorial-heading {
+  font-family: var(--font-inter);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  color: var(--color-text);
+}
+
+/* ── Accent Text (for on-chain/status elements only) ─────────────────────── */
 .gradient-text {
   color: var(--color-accent);
   -webkit-text-fill-color: var(--color-accent);
 }
 
-/* Keep legacy class name working — maps to accent now */
 .gradient-text-warm {
   color: var(--color-accent);
   -webkit-text-fill-color: var(--color-accent);
@@ -80,12 +99,12 @@ h1, h2, h3, h4, h5, h6 {
 .glass {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
 .glass-hover:hover {
   border-color: var(--color-border-strong);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
 }
 
 .card-lift {
@@ -93,29 +112,22 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .card-lift:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.07);
 }
 
-/* ── Glow (remapped to accent) ───────────────────────────────────────────── */
-.glow-cyan {
-  box-shadow: 0 0 16px rgba(0, 200, 150, 0.2);
-}
+/* ── Glow (status elements) ──────────────────────────────────────────────── */
+.glow-cyan   { box-shadow: 0 0 16px rgba(0, 200, 150, 0.2); }
+.glow-purple { box-shadow: 0 0 16px rgba(0, 200, 150, 0.15); }
 
-.glow-purple {
-  box-shadow: 0 0 16px rgba(0, 200, 150, 0.15);
-}
-
-/* ── Border Gradient ─────────────────────────────────────────────────────── */
-.border-gradient {
-  border: 1px solid var(--color-border);
-}
+/* ── Border gradient ─────────────────────────────────────────────────────── */
+.border-gradient { border: 1px solid var(--color-border); }
 
 /* ── Inputs ──────────────────────────────────────────────────────────────── */
 .input-crypto {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 8px;
   color: var(--color-text);
   padding: 11px 14px;
   font-size: 14px;
@@ -126,38 +138,39 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .input-crypto:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px var(--color-accent-dim);
+  border-color: var(--color-text);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
 }
 
-.input-crypto::placeholder {
-  color: var(--color-text-subtle);
-}
+.input-crypto::placeholder { color: var(--color-text-subtle); }
 
 .focus-gradient:focus-within {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-dim);
 }
 
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/* ── Buttons — Pill Style (NexStudio) ────────────────────────────────────── */
 .btn-primary {
-  background: var(--color-text);
-  color: var(--color-surface);
-  font-weight: 600;
-  font-family: var(--font-space-grotesk);
-  border: 1px solid var(--color-text);
-  border-radius: 4px;
-  padding: 11px 24px;
+  background: #000000;
+  color: #ffffff;
+  font-weight: 500;
+  font-family: var(--font-inter);
+  border: 1px solid #000000;
+  border-radius: 9999px;           /* pill */
+  padding: 12px 26px;
   cursor: pointer;
-  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
   font-size: 14px;
   letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-primary:hover {
-  background: #1C1C1E;
+  background: #1a1a1a;
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
 .btn-primary:active {
@@ -167,20 +180,22 @@ h1, h2, h3, h4, h5, h6 {
 
 .btn-secondary {
   background: transparent;
-  color: var(--color-text);
-  font-weight: 600;
-  font-family: var(--font-space-grotesk);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 4px;
-  padding: 11px 24px;
+  color: #000000;
+  font-weight: 500;
+  font-family: var(--font-inter);
+  border: 1px solid #000000;
+  border-radius: 9999px;           /* pill */
+  padding: 12px 26px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.2s ease, border-color 0.2s ease;
   font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-secondary:hover {
-  background: var(--color-surface-2);
-  border-color: var(--color-text-muted);
+  background: #F7F7F7;
 }
 
 /* ── Badges ──────────────────────────────────────────────────────────────── */
@@ -189,10 +204,10 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  border-radius: 2px;
+  border-radius: 9999px;
   font-size: 11px;
-  font-weight: 600;
-  font-family: var(--font-space-grotesk);
+  font-weight: 500;
+  font-family: var(--font-inter);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -253,9 +268,7 @@ h1, h2, h3, h4, h5, h6 {
   50%       { opacity: 0.4; transform: scale(0.75); }
 }
 
-.pulse-dot {
-  animation: pulseDot 2s ease-in-out infinite;
-}
+.pulse-dot { animation: pulseDot 2s ease-in-out infinite; }
 
 /* ── Line clamp ──────────────────────────────────────────────────────────── */
 .line-clamp-2 {
@@ -280,10 +293,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .crypto-table th {
-  font-family: var(--font-space-grotesk);
+  font-family: var(--font-inter);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-muted);
+  font-weight: 500;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 10px 14px;
@@ -300,6 +313,16 @@ h1, h2, h3, h4, h5, h6 {
 
 .crypto-table tr:last-child td { border-bottom: none; }
 .crypto-table tr:hover td { background: var(--color-surface-2); }
+
+/* ── Marquee / infinite scroll ───────────────────────────────────────────── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
 
 /* ── Reduced motion ──────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
