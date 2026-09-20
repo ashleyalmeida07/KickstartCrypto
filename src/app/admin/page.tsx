@@ -546,7 +546,7 @@ export default function AdminPage() {
                                 {campaignBackers.slice(0, 10).map((b, bi) => (
                                   <div key={bi} className="grid grid-cols-[2fr_1fr_1fr_auto] items-center px-3 py-2 border-t border-zinc-100 hover:bg-white transition-colors">
                                     <span className="text-xs font-mono text-zinc-600">{trunc(b.backer_address)}</span>
-                                    <span className="text-xs font-semibold text-sky-600">{Number(formatEther(BigInt(b.amount_wei || '0'))).toFixed(4)} ETH</span>
+                                    <span className="text-xs font-semibold text-sky-600">{formatEther(BigInt(b.amount_wei || '0'))} ETH</span>
                                     <span className="text-xs text-zinc-400">{fmtDate(b.created_at)}</span>
                                     <a href={`https://sepolia.etherscan.io/tx/${b.tx_hash}`} target="_blank" rel="noopener noreferrer"
                                       className="text-zinc-300 hover:text-sky-500 transition-colors">

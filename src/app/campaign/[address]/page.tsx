@@ -388,7 +388,10 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-sky-400 to-purple-600 flex-shrink-0" />
                   <div>
-                    <p className="text-xs text-slate-500">Creator</p>
+                    <p className="text-xs text-slate-500">
+                      {campaign.creatorName ? campaign.creatorName : 'Creator'}
+                      {campaign.createdAt && ` • ${new Date(campaign.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+                    </p>
                     <a href={`https://sepolia.etherscan.io/address/${campaign.creator}`} target="_blank" rel="noopener noreferrer"
                       className="text-sky-600 hover:text-sky-800 font-mono text-xs flex items-center gap-1">
                       {campaign.creator.slice(0, 6)}…{campaign.creator.slice(-4)}
@@ -403,7 +406,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                 <div className="ml-auto flex gap-2">
                   {isCreator && (
                     <Link
-                      href={`/dashboard?campaign=${addr}`}
+                      href={`/manage/${addr}`}
                       className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100 hover:border-sky-300 transition-all text-xs font-semibold"
                     >
                       <Settings className="w-3.5 h-3.5" />

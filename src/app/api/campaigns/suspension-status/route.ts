@@ -26,12 +26,16 @@ export async function GET(req: NextRequest) {
     image_cid:         string | null;
     vetting_status:    string | null;
     vetting_score:     number | null;
+    creator_name:      string | null;
+    created_at:        string;
   }>(
-    `SELECT contract_address, suspended, suspended_reason,
-            title, short_description, category, image_cid,
-            vetting_status, vetting_score
-     FROM campaigns
-     WHERE contract_address IN (${placeholders})`,
+    `SELECT c.contract_address, c.suspended, c.suspended_reason,
+            c.title, c.short_description, c.category, c.image_cid,
+            c.vetting_status, c.vetting_score,
+            u.name AS creator_name, c.created_at
+     FROM campaigns c
+     LEFT JOIN users u ON c.creator_id = u.id
+     WHERE c.contract_address IN (${placeholders})`,
     addresses,
   );
 

@@ -32,6 +32,8 @@ export interface OnChainCampaign {
   suspended:        boolean;
   suspendedReason:  string | null;
   _existsInDb:      boolean;
+  creatorName:      string | null;
+  createdAt:        string | null;
   // Vetting
   vettingStatus:    string | null;
   vettingScore:     number | null;
@@ -65,7 +67,7 @@ function buildCampaign(
   suspended = false,
   suspendedReason: string | null = null,
   existsInDb = false,
-  dbMeta?: { title?: string; description?: string; category?: string; imageUrl?: string },
+  dbMeta?: { title?: string; description?: string; category?: string; imageUrl?: string; creatorName?: string | null; createdAt?: string | null },
 ): OnChainCampaign {
   // New getDetails returns: creator, goal, deadline, totalContributed, balance,
   //                          goalReached, cancelled, settled, backerCount
@@ -98,6 +100,8 @@ function buildCampaign(
     suspended,
     suspendedReason,
     _existsInDb:     existsInDb,
+    creatorName:     (dbMeta as DbInfo | undefined)?.creatorName ?? null,
+    createdAt:       (dbMeta as DbInfo | undefined)?.createdAt   ?? null,
     vettingStatus:   (dbMeta as DbInfo | undefined)?.vettingStatus ?? null,
     vettingScore:    (dbMeta as DbInfo | undefined)?.vettingScore  ?? null,
   };
@@ -113,6 +117,8 @@ interface DbInfo {
   description?:     string;
   category?:        string;
   imageUrl?:        string;
+  creatorName?:     string | null;
+  createdAt?:       string | null;
   vettingStatus?:   string | null;
   vettingScore?:    number | null;
 }
@@ -130,6 +136,8 @@ async function fetchDbInfo(addresses: string[]): Promise<Record<string, DbInfo>>
       short_description?: string;
       category?:        string;
       image_cid?:       string;
+      creator_name?:    string | null;
+      created_at?:      string;
       vetting_status?:  string | null;
       vetting_score?:   number | null;
     }> = await res.json();
@@ -143,6 +151,8 @@ async function fetchDbInfo(addresses: string[]): Promise<Record<string, DbInfo>>
         description:   r.short_description,
         category:      r.category,
         imageUrl:      r.image_cid,
+        creatorName:   r.creator_name ?? null,
+        createdAt:     r.created_at ?? null,
         vettingStatus: r.vetting_status ?? null,
         vettingScore:  r.vetting_score  ?? null,
       },
