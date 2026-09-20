@@ -13,10 +13,12 @@ interface Props {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  Active: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  Funded: 'bg-zinc-900 border-zinc-900 text-white',
-  Ended:  'bg-zinc-100 border-zinc-200 text-zinc-500',
-  Failed: 'bg-red-50 border-red-200 text-red-600',
+  Active:    'bg-zinc-900 border-zinc-900 text-white',
+  Funded:    'bg-zinc-100 border-zinc-200 text-zinc-900',
+  Settled:   'bg-zinc-100 border-zinc-200 text-zinc-900',
+  Cancelled: 'bg-white border-zinc-200 text-zinc-500',
+  Ended:     'bg-zinc-100 border-zinc-200 text-zinc-500',
+  Failed:    'bg-white border-zinc-200 text-zinc-500',
 };
 
 export function CampaignCard({ campaign, index = 0 }: Props) {
@@ -53,17 +55,21 @@ export function CampaignCard({ campaign, index = 0 }: Props) {
         <div className="bg-white border border-zinc-200 overflow-hidden hover:border-zinc-400 hover:shadow-md transition-all duration-200 h-full flex flex-col">
 
           {/* Thumbnail */}
-          <div className="relative h-44 overflow-hidden bg-zinc-100 flex-shrink-0">
-            <img
-              src={imageUrl || `https://picsum.photos/seed/${address.slice(2, 8)}/800/400`}
-              alt={title}
-              className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  `https://picsum.photos/seed/${address.slice(2, 8)}/800/400`;
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent" />
+          <div className="relative h-44 overflow-hidden bg-zinc-100 flex-shrink-0 flex items-center justify-center">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={title}
+                className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500"
+              />
+            ) : (
+              <div className="w-full h-full opacity-[0.03] flex flex-wrap gap-2 p-4 justify-center items-center">
+                {[...Array(40)].map((_, i) => (
+                  <div key={i} className="w-4 h-4 rounded-full bg-black" />
+                ))}
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
 
             {/* Status + category badges */}
             <div className="absolute top-3 left-3 flex gap-1.5">

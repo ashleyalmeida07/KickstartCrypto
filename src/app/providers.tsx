@@ -175,7 +175,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <RainbowKitProvider
             avatar={CustomAvatar}
             theme={lightTheme({
-              accentColor:           '#00C896',
+              accentColor:           '#09090b',
               accentColorForeground: '#ffffff',
               borderRadius:          'small',
               fontStack:             'system',

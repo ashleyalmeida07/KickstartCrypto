@@ -12,12 +12,46 @@ import {
   X, ExternalLink, ChevronRight, Clock,
 } from 'lucide-react';
 import { useDeployment } from '@/context/DeploymentContext';
+import { useEffect } from 'react';
+import { useWaitForTransactionReceipt } from 'wagmi';
+import toast from 'react-hot-toast';
 
 const SEPOLIA_ETHERSCAN = 'https://sepolia.etherscan.io/tx/';
 
 export function DeploymentWidget() {
-  const { deploy, dismiss } = useDeployment();
-  const { status, txHash, campaignTitle, campaignAddress, errorMsg } = deploy;
+  const { deploy, dismiss, setRegistering, setDone } = useDeployment();
+  const { status, txHash, campaignTitle, campaignAddress, errorMsg, formData } = deploy;
+
+  const { isSuccess } = useWaitForTransactionReceipt({
+    hash:  txHash,
+    query: { enabled: !!txHash },
+  });
+
+  useEffect(() => {
+    if (isSuccess && status === 'confirming' && formData) {
+      setRegistering();
+      toast.success('Confirmed on-chain! Registering campaign…');
+
+      fetch('/api/campaigns/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          txHash,
+          ...formData
+        }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          console.log('[DB] Campaign registered:', d);
+          setDone(d?.contractAddress ?? undefined);
+          toast.success('Campaign is live! 🎉');
+        })
+        .catch(e => {
+          console.error('[DB] Register failed:', e);
+          setDone(undefined);
+        });
+    }
+  }, [isSuccess, status, formData, txHash, setRegistering, setDone]);
 
   const isVisible = status !== 'idle';
 

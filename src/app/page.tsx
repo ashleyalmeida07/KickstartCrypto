@@ -79,9 +79,16 @@ export default function HomePage() {
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="relative min-h-screen flex items-center justify-center pt-32 pb-24 bg-white overflow-hidden">
-        {/* Background Image */}
+        {/* Background Video */}
         <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
-          <img src="/hero-bg.png" alt="" className="w-full h-full object-cover object-center" />
+          <video 
+            src="/Use_the_uploaded_image_as_the.mp4" 
+            autoPlay 
+            loop 
+            muted 
+            playsInline 
+            className="w-full h-full object-cover object-center" 
+          />
         </div>
         
         <div className="relative z-10 max-w-[960px] mx-auto px-6 text-center">
@@ -251,7 +258,6 @@ export default function HomePage() {
             ? featured.map((c, i) => <CampaignCard key={c.address} campaign={c} index={i} variant="featured" />)
             : (
               <div className="col-span-3 text-center py-20 border border-[#E5E5E5] rounded-2xl">
-                <p className="text-4xl mb-4">🚀</p>
                 <p className="font-medium text-black">No active campaigns yet.</p>
                 <p className="text-sm text-black/40 mt-2">
                   Be the first to{' '}

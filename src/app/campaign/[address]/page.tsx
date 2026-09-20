@@ -319,7 +319,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center pt-20">
-        <Loader2 className="w-10 h-10 animate-spin text-sky-500" />
+        <Loader2 className="w-10 h-10 animate-spin text-zinc-900" />
       </div>
     );
   }
@@ -336,23 +336,31 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
   }
 
   const STATUS_STYLES: Record<string, string> = {
-    Active:    'bg-emerald-50 border-emerald-200 text-emerald-700',
-    Funded:    'bg-sky-50    border-sky-200    text-sky-700',
-    Failed:    'bg-red-50    border-red-200    text-red-600',
-    Ended:     'bg-slate-100 border-slate-200  text-slate-500',
-    Cancelled: 'bg-orange-50 border-orange-200 text-orange-600',
+    Active:    'bg-zinc-900 border-zinc-900 text-white',
+    Funded:    'bg-zinc-100 border-zinc-200 text-zinc-900',
+    Settled:   'bg-zinc-100 border-zinc-200 text-zinc-900',
+    Failed:    'bg-white border-zinc-200 text-zinc-500',
+    Ended:     'bg-zinc-100 border-zinc-200 text-zinc-500',
+    Cancelled: 'bg-white border-zinc-200 text-zinc-500',
   };
 
   return (
     <div className="min-h-screen">
       {/* Hero banner */}
-      <div className="relative h-64 sm:h-80 overflow-hidden bg-gradient-to-br from-sky-100 to-purple-100">
-        <img
-          src={campaign.imageUrl || `https://picsum.photos/seed/${addr.slice(2, 10)}/1200/400`}
-          alt={campaign.title}
-          className="w-full h-full object-cover"
-          onError={e => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${addr.slice(2, 10)}/1200/400`; }}
-        />
+      <div className="relative h-64 sm:h-80 overflow-hidden bg-zinc-100 flex items-center justify-center">
+        {campaign.imageUrl ? (
+          <img
+            src={campaign.imageUrl}
+            alt={campaign.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full opacity-[0.03] flex flex-wrap gap-4 p-8 justify-center items-center">
+            {[...Array(60)].map((_, i) => (
+              <div key={i} className="w-8 h-8 rounded-full bg-black" />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 -mt-12 relative z-10 pb-24">
@@ -590,7 +598,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                 <div className="mb-5">
                   <div className="flex items-end justify-between mb-2">
                     <div>
-                      <div className="text-3xl font-black gradient-text" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                      <div className="text-3xl font-black text-zinc-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                         {formatEthSmart(campaign.raisedEth)} ETH
                       </div>
                       <div className="text-sm text-slate-500 mt-0.5">raised of {formatEthSmart(campaign.goalEth)} ETH</div>
@@ -601,12 +609,12 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                     </div>
                   </div>
                   {/* Progress bar */}
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-1 bg-zinc-100 overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min(100, campaign.progressPercent)}%` }}
                       transition={{ duration: 1.2, ease: 'easeOut' }}
-                      className="h-full bg-gradient-to-r from-sky-500 to-purple-600 rounded-full"
+                      className="h-full bg-zinc-900"
                     />
                   </div>
                 </div>
@@ -636,13 +644,13 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                       setActiveTab('refund');
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    className="w-full py-3.5 rounded-xl text-center text-base font-semibold bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-all flex items-center justify-center gap-2">
+                    className="w-full py-3.5 rounded-xl text-center text-base font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm transition-all flex items-center justify-center gap-2">
                     <RefreshCw className="w-5 h-5" /> Claim Your Refund
                   </button>
                 ) : (
                   <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${
                     campaign.goalReached
-                      ? 'bg-emerald-50 border border-emerald-200 text-emerald-700'
+                      ? 'bg-zinc-100 border border-zinc-200 text-zinc-900'
                       : STATUS_STYLES[campaign.status] ?? 'bg-slate-100 text-slate-500'
                   }`}>
                     {campaign.goalReached ? '✓ Goal Reached — Awaiting Settlement' : `Campaign ${campaign.status}`}

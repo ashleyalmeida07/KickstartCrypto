@@ -92,49 +92,6 @@ export default function CreatePage() {
     },
   });
 
-  const { isSuccess } = useWaitForTransactionReceipt({
-    hash:  txHash,
-    query: { enabled: !!txHash },
-  });
-  // After on-chain confirm — register in DB, update global widget, navigate away
-  useEffect(() => {
-    if (isSuccess && deployment.deploy.status === 'confirming') {
-      setDeploying(false);
-      deployment.setRegistering();
-      toast.success('Confirmed on-chain! Registering campaign…');
-
-      fetch('/api/campaigns/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          txHash,
-          creatorAddress:  address,
-          creatorEmail:    session?.user?.email ?? null,
-          title:           form.title,
-          description:     form.shortDescription,
-          category:        form.category,
-          imageUrl:        form.thumbnailCid,
-          goalEth:         form.goalEth,
-          durationDays:    form.durationDays,
-          milestones:      form.milestones,
-          rewardTiers:     form.rewardTiers,
-        }),
-      })
-        .then(r => r.json())
-        .then(d => {
-          console.log('[DB] Campaign registered:', d);
-          deployment.setDone(d?.contractAddress ?? undefined);
-          toast.success('Campaign is live! 🎉');
-          setTimeout(() => router.push('/explore'), 1200);
-        })
-        .catch(e => {
-          console.error('[DB] Register failed:', e);
-          deployment.setDone(undefined);
-        });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuccess]);
-
 
   /* â”€â”€ Derived â”€â”€ */
   const totalMilestonePercent = form.milestones.reduce((s, m) => s + Number(m.percentage), 0);
@@ -215,8 +172,6 @@ export default function CreatePage() {
     if (totalMilestonePercent !== 100) { toast.error('Milestone percentages must add up to 100%'); return; }
     if (form.milestones.some(m => !m.title.trim())) { toast.error('All milestones need a title'); return; }
     setDeploying(true);
-    deployment.startDeployment(form.title);
-
     // 1ï¸âƒ£  Upload thumbnail to Supabase Storage (if the user selected one)
     let imageUrl = form.thumbnailCid || '';
     if (form.thumbnailFile && !imageUrl) {
@@ -238,6 +193,19 @@ export default function CreatePage() {
       description: form.shortDescription,
       category:    form.category,
       image:       imageUrl,
+    });
+
+    deployment.startDeployment(form.title, {
+      creatorAddress: address,
+      creatorEmail: session?.user?.email ?? null,
+      title: form.title,
+      description: form.shortDescription,
+      category: form.category,
+      imageUrl: imageUrl,
+      goalEth: form.goalEth,
+      durationDays: form.durationDays,
+      milestones: form.milestones,
+      rewardTiers: form.rewardTiers,
     });
 
     writeContract({
@@ -447,7 +415,7 @@ export default function CreatePage() {
                 <Info className="w-4 h-4 flex-shrink-0" />
                 <span>
                   Total milestone percentage: <strong>{totalMilestonePercent}%</strong>
-                  {totalMilestonePercent !== 100 && ` â€” must equal 100%`}
+                  {totalMilestonePercent !== 100 && ` - must equal 100%`}
                 </span>
                 {totalMilestonePercent === 100 && <CheckCircle className="w-4 h-4 ml-auto flex-shrink-0" />}
               </div>
@@ -752,22 +720,15 @@ export default function CreatePage() {
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.4 }}
-                      className={`border rounded-xl p-5 space-y-4 ${
-                        preVetResult.verdict === 'auto_approve' ? 'border-emerald-200 bg-emerald-50' :
-                        preVetResult.verdict === 'flag_for_review' ? 'border-amber-200 bg-amber-50' :
-                        'border-red-200 bg-red-50'
-                      }`}
+                      className="border rounded-xl p-5 space-y-4 bg-white border-zinc-200"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          {preVetResult.verdict === 'auto_approve'    && <ShieldCheck className="w-5 h-5 text-emerald-500" />}
-                          {preVetResult.verdict === 'flag_for_review' && <ShieldAlert className="w-5 h-5 text-amber-500" />}
-                          {preVetResult.verdict === 'auto_reject'     && <ShieldX className="w-5 h-5 text-red-500" />}
+                          {preVetResult.verdict === 'auto_approve'    && <ShieldCheck className="w-5 h-5 text-zinc-900" />}
+                          {preVetResult.verdict === 'flag_for_review' && <ShieldAlert className="w-5 h-5 text-zinc-900" />}
+                          {preVetResult.verdict === 'auto_reject'     && <ShieldX className="w-5 h-5 text-zinc-900" />}
                           <div>
-                            <div className={`font-bold text-sm ${
-                              preVetResult.verdict === 'auto_approve' ? 'text-emerald-700' :
-                              preVetResult.verdict === 'flag_for_review' ? 'text-amber-700' : 'text-red-700'
-                            }`}>
+                            <div className="font-bold text-sm text-zinc-900">
                               {preVetResult.verdict === 'auto_approve' ? 'Low Risk — Ready to Deploy' :
                                preVetResult.verdict === 'flag_for_review' ? 'Medium Risk — Will be manually reviewed' :
                                'High Risk — Deployment Blocked'}
@@ -775,22 +736,21 @@ export default function CreatePage() {
                             <div className="text-xs text-zinc-400 mt-0.5">Analysis complete</div>
                           </div>
                         </div>
-                        <div className="text-3xl font-black" style={{ color: barColor, fontFamily: 'var(--font-space-grotesk)' }}>
+                        <div className="text-3xl font-black text-zinc-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                           {pct}<span className="text-sm font-normal text-zinc-400">/100</span>
                         </div>
                       </div>
 
                       <div>
-                        <div className="h-3 bg-white/60 rounded-full overflow-hidden border border-white">
+                        <div className="h-1 bg-zinc-100 overflow-hidden">
                           <motion.div
                             initial={{ width: 0 }}
                             animate={{ width: `${pct}%` }}
                             transition={{ duration: 1, ease: 'easeOut' }}
-                            className="h-full rounded-full"
-                            style={{ background: `linear-gradient(90deg, #10b981, ${barColor})` }}
+                            className="h-full bg-zinc-900"
                           />
                         </div>
-                        <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
+                        <div className="flex justify-between text-[10px] text-zinc-400 mt-2">
                           <span>0 — Safe</span><span>65 — Review</span><span>100 — Blocked</span>
                         </div>
                       </div>
@@ -800,7 +760,7 @@ export default function CreatePage() {
                           <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Flags</p>
                           {preVetResult.reasons.map(r => (
                             <div key={r} className="flex items-center gap-1.5 text-xs text-zinc-600">
-                              <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
                               {r.replace(/_/g, ' ')}
                             </div>
                           ))}
@@ -863,13 +823,10 @@ export default function CreatePage() {
                   <>
                     {/* Risk score summary badge */}
                     {preVetResult && (
-                      <div className={`flex items-center gap-3 p-3 rounded-xl mb-2 ${
-                        preVetResult.verdict === 'auto_approve' ? 'bg-emerald-50 border border-emerald-200' :
-                        'bg-amber-50 border border-amber-200'
-                      }`}>
+                      <div className="flex items-center gap-3 p-3 rounded-xl mb-2 bg-white border border-zinc-200">
                         {preVetResult.verdict === 'auto_approve'
-                          ? <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-                          : <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />}
+                          ? <ShieldCheck className="w-4 h-4 text-zinc-900 shrink-0" />
+                          : <ShieldAlert className="w-4 h-4 text-zinc-900 shrink-0" />}
                         <div className="flex-1 text-xs">
                           <span className="font-semibold">AI Risk Score: {Math.round(preVetResult.risk_score * 100)}/100</span>
                           <span className="text-zinc-500 ml-2">Â·</span>
