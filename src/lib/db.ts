@@ -14,9 +14,9 @@ if (!global._pgPool) {
   global._pgPool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    max: 5,                        // NeonDB serverless: keep low to avoid exhaustion
-    idleTimeoutMillis: 10_000,     // release idle connections faster (serverless wakes cold)
-    connectionTimeoutMillis: 10_000, // longer wait — Neon can take ~5s on cold start
+    max: 10,                       // NeonDB serverless: keep low to avoid exhaustion
+    idleTimeoutMillis: 30_000,     // release idle connections faster (serverless wakes cold)
+    connectionTimeoutMillis: 30_000, // longer wait — Neon can take ~5-15s on cold start
     allowExitOnIdle: true,
   });
 

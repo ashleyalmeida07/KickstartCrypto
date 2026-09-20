@@ -78,7 +78,12 @@ export default function HomePage() {
     <div className="overflow-hidden bg-white">
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-      <section className="relative min-h-screen flex items-center justify-center pt-32 pb-24 bg-white">
+      <section className="relative min-h-screen flex items-center justify-center pt-32 pb-24 bg-white overflow-hidden">
+        {/* Background Image */}
+        <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
+          <img src="/hero-bg.png" alt="" className="w-full h-full object-cover object-center" />
+        </div>
+        
         <div className="relative z-10 max-w-[960px] mx-auto px-6 text-center">
 
           {/* Eyebrow */}

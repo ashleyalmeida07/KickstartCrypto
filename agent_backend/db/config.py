@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "mistralai/mistral-7b-instruct:free"
+    OPENROUTER_MODEL: str = "nvidia/nemotron-3.5-lightning:free"
     # Vision-capable model used by Flow 3 to OCR uploaded receipts/photos.
     # Must accept image_url content blocks — a text-only model will fail to parse
     # image proofs and every image submission will fall through to admin review.

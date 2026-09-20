@@ -73,6 +73,10 @@ export default function CreatePage() {
   });
   const setNodeState = (node: string, s: NodeState) =>
     setNodeStates(prev => ({ ...prev, [node]: s }));
+  // Step 3: expanded node detail panel — hoisted here to obey Rules of Hooks
+  const [expandedNode, setExpandedNode] = useState<string | null>(null);
+  const toggleExpand = (id: string) =>
+    setExpandedNode(prev => prev === id ? null : id);
 
   const { writeContract } = useWriteContract({
     mutation: {
@@ -339,7 +343,7 @@ export default function CreatePage() {
               </div>
 
               <div>
-                <label className={label}>Thumbnail Image <span className="text-slate-400 font-normal normal-case tracking-normal">â€” optional</span></label>
+                <label className={label}>Thumbnail Image <span className="text-slate-400 font-normal normal-case tracking-normal">— optional</span></label>
                 <div
                   className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-sky-400 hover:bg-sky-50/40 transition-all"
                   onClick={() => document.getElementById('thumbnail-input')?.click()}
@@ -381,11 +385,11 @@ export default function CreatePage() {
               </div>
 
               <div>
-                <label className={label}>Campaign Duration: <span className="text-sky-600">{form.durationDays} days</span></label>
+                <label className={label}>Campaign Duration: <span className="text-zinc-900 font-bold">{form.durationDays} days</span></label>
                 <input id="create-duration" type="range" min="7" max="365"
                   value={form.durationDays}
                   onChange={e => updateForm({ durationDays: parseInt(e.target.value) })}
-                  className="w-full accent-sky-500 h-2 rounded-lg cursor-pointer" />
+                  className="w-full accent-black h-2 rounded-lg cursor-pointer" />
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
                   <span>7 days</span><span>1 year</span>
                 </div>
@@ -393,8 +397,8 @@ export default function CreatePage() {
 
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <label className={label + ' mb-0'}>Reward Tiers <span className="text-slate-400 font-normal normal-case tracking-normal">â€” optional</span></label>
-                  <button onClick={addTier} className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-semibold">
+                  <label className={label + ' mb-0'}>Reward Tiers <span className="text-slate-400 font-normal normal-case tracking-normal">— optional</span></label>
+                  <button onClick={addTier} className="text-xs text-black hover:text-zinc-600 flex items-center gap-1 font-semibold">
                     <Plus className="w-3.5 h-3.5" /> Add Tier
                   </button>
                 </div>
@@ -429,7 +433,7 @@ export default function CreatePage() {
             <div className={card}>
               <div className="flex items-center justify-between">
                 <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>Milestones</h2>
-                <button onClick={addMilestone} className="text-xs text-sky-600 hover:text-sky-800 flex items-center gap-1 font-semibold">
+                <button onClick={addMilestone} className="text-xs text-black hover:text-zinc-600 flex items-center gap-1 font-semibold">
                   <Plus className="w-3.5 h-3.5" /> Add Milestone
                 </button>
               </div>
@@ -452,7 +456,7 @@ export default function CreatePage() {
                 {form.milestones.map((m, idx) => (
                   <div key={idx} className="border border-slate-200 rounded-xl p-5 space-y-3 bg-slate-50/50">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-sky-600" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+                      <span className="text-sm font-bold text-black" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                         Milestone {idx + 1}
                       </span>
                       {form.milestones.length > 1 && (
@@ -485,16 +489,11 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* â”€â”€ STEP 3: AI Risk Check â”€â”€ */}
+          {/* ── STEP 3: AI Risk Check ── */}
           {step === 3 && (() => {
-            const score   = preVetResult?.risk_score ?? 0;
-            const pct     = Math.round(score * 100);
+            const score    = preVetResult?.risk_score ?? 0;
+            const pct      = Math.round(score * 100);
             const barColor = score < 0.3 ? '#10b981' : score < 0.65 ? '#f59e0b' : '#ef4444';
-
-            // Per-node expanded state for the "..." dropdown
-            const [expandedNode, setExpandedNode] = useState<string | null>(null);
-            const toggleExpand = (id: string) =>
-              setExpandedNode(prev => prev === id ? null : id);
 
             const NodeStatusIcon = ({ state }: { state: string }) =>
               state === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-sky-500" /> :
@@ -512,22 +511,20 @@ export default function CreatePage() {
                 id: 'wallet',
                 icon: Wallet,
                 label: 'Node 1 — Wallet History Check',
-                method: { label: 'Etherscan API', color: 'bg-sky-50 border-sky-200 text-sky-700' },
+                method: { label: 'Etherscan API', color: 'bg-zinc-100 border-zinc-200 text-zinc-900' },
                 desc: `Querying Etherscan Sepolia for ${address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'your wallet'}`,
-                // What data goes IN
                 inputs: [
-                  { label: 'Wallet Address',  value: address ?? 'Not connected',          type: 'Address' },
-                  { label: 'Network',          value: 'Sepolia Testnet',                   type: 'Config'  },
-                  { label: 'Data Source',      value: 'Etherscan API (txlist endpoint)',   type: 'API'     },
-                  { label: 'Checks',           value: 'Age · Tx count · Known fraud lists', type: 'Logic' },
-                  { label: 'Blocklist DB',     value: 'Internal flagged-address registry', type: 'DB'     },
+                  { label: 'Wallet Address', value: address ?? 'Not connected',           type: 'Address' },
+                  { label: 'Network',         value: 'Sepolia Testnet',                    type: 'Config'  },
+                  { label: 'Data Source',     value: 'Etherscan API (txlist endpoint)',    type: 'API'     },
+                  { label: 'Checks',          value: 'Age · Tx count · Known fraud lists', type: 'Logic'  },
+                  { label: 'Blocklist DB',    value: 'Internal flagged-address registry',  type: 'DB'     },
                 ],
-                // What comes OUT (only after done)
                 outputs: nodeStates.wallet === 'done' && preVetResult ? [
-                  { label: 'Wallet Age',      value: preVetResult.wallet_age_days !== null ? `${preVetResult.wallet_age_days} days` : '—',      good: (preVetResult.wallet_age_days ?? 0) > 30 },
-                  { label: 'Tx Count',        value: preVetResult.wallet_tx_count !== null ? `${preVetResult.wallet_tx_count} transactions` : '—', good: (preVetResult.wallet_tx_count ?? 0) > 5 },
-                  { label: 'Blocklist',       value: preVetResult.wallet_on_blocklist === true ? '🔴 Flagged' : '✅ Clean',                      good: !preVetResult.wallet_on_blocklist },
-                  { label: 'Wallet Score',    value: preVetResult.wallet_score !== null ? `${Math.round((preVetResult.wallet_score ?? 0) * 100)}%` : '—', good: (preVetResult.wallet_score ?? 0) > 0.5 },
+                  { label: 'Wallet Age',   value: preVetResult.wallet_age_days  !== null ? `${preVetResult.wallet_age_days} days`         : '—', good: (preVetResult.wallet_age_days  ?? 0) > 30  },
+                  { label: 'Tx Count',     value: preVetResult.wallet_tx_count  !== null ? `${preVetResult.wallet_tx_count} transactions`  : '—', good: (preVetResult.wallet_tx_count  ?? 0) > 5   },
+                  { label: 'Blocklist',    value: preVetResult.wallet_on_blocklist === true ? 'Flagged' : 'Clean',                               good: !preVetResult.wallet_on_blocklist            },
+                  { label: 'Wallet Score', value: preVetResult.wallet_score  !== null ? `${Math.round((preVetResult.wallet_score  ?? 0) * 100)}%` : '—', good: (preVetResult.wallet_score  ?? 0) > 0.5 },
                 ] : [],
                 scoring: 'Weight: 50% of final risk score. Age < 7 days or tx count < 2 adds risk.',
               },
@@ -535,19 +532,19 @@ export default function CreatePage() {
                 id: 'content',
                 icon: FileText,
                 label: 'Node 2 — Content Authenticity Analysis',
-                method: { label: 'LLM (OpenRouter)', color: 'bg-purple-50 border-purple-200 text-purple-700' },
+                method: { label: 'LLM (OpenRouter)', color: 'bg-zinc-100 border-zinc-200 text-zinc-900' },
                 desc: `Analysing "${form.title.slice(0, 40)}${form.title.length > 40 ? '…' : ''}" for fraud signals`,
                 inputs: [
-                  { label: 'Campaign Title',  value: form.title || '—',                                          type: 'Text'   },
-                  { label: 'Description',     value: `${form.shortDescription.slice(0, 80)}${form.shortDescription.length > 80 ? '…' : ''}`, type: 'Text' },
-                  { label: 'Category',        value: form.category,                                               type: 'Meta'   },
-                  { label: 'Funding Goal',    value: form.goalEth ? `${form.goalEth} ETH` : '—',                  type: 'Number' },
-                  { label: 'LLM Model',       value: 'mistralai/mistral-7b-instruct (OpenRouter)',                type: 'Model'  },
-                  { label: 'Checks',          value: 'Realistic promises · Coherence · Plagiarism · Urgency pressure', type: 'Logic' },
+                  { label: 'Campaign Title', value: form.title || '—',                                                                             type: 'Text'   },
+                  { label: 'Description',    value: `${form.shortDescription.slice(0, 80)}${form.shortDescription.length > 80 ? '…' : ''}`,        type: 'Text'   },
+                  { label: 'Category',       value: form.category,                                                                                  type: 'Meta'   },
+                  { label: 'Funding Goal',   value: form.goalEth ? `${form.goalEth} ETH` : '—',                                                     type: 'Number' },
+                  { label: 'LLM Model',      value: 'nvidia/nemotron-3.5-lightning:free (OpenRouter)',                                                   type: 'Model'  },
+                  { label: 'Checks',         value: 'Realistic promises · Coherence · Plagiarism · Urgency pressure',                               type: 'Logic'  },
                 ],
                 outputs: nodeStates.content === 'done' && preVetResult ? [
-                  { label: 'Content Score',  value: `${Math.round((preVetResult.content_score ?? 0) * 100)}%`, good: (preVetResult.content_score ?? 0) > 0.5 },
-                  { label: 'Flags',          value: preVetResult.reasons.filter(r => !['wallet','blocklist'].some(w => r.includes(w))).join(', ').replace(/_/g, ' ') || 'None', good: preVetResult.reasons.length === 0 },
+                  { label: 'Content Score', value: `${Math.round((preVetResult.content_score ?? 0) * 100)}%`, good: (preVetResult.content_score ?? 0) > 0.5 },
+                  { label: 'Flags',         value: preVetResult.reasons.filter(r => !['wallet','blocklist'].some(w => r.includes(w))).join(', ').replace(/_/g, ' ') || 'None', good: preVetResult.reasons.length === 0 },
                 ] : [],
                 scoring: 'Weight: 50% of final risk score. Measures authenticity 0–1 (1 = clean). Flags like URGENCY_PRESSURE or PLAGIARISM_SIGNALS reduce this score.',
               },
@@ -555,20 +552,20 @@ export default function CreatePage() {
                 id: 'score',
                 icon: BarChart3,
                 label: 'Node 3 — Risk Score Computation',
-                method: { label: 'Algorithm', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+                method: { label: 'Algorithm', color: 'bg-zinc-100 border-zinc-200 text-zinc-900' },
                 desc: 'Combines wallet + content signals into a single 0–100 risk score',
                 inputs: [
-                  { label: 'Wallet Score',    value: preVetResult ? `${Math.round((preVetResult.wallet_score ?? 0) * 100)}%` : 'Pending',      type: 'Input' },
-                  { label: 'Content Score',   value: preVetResult ? `${Math.round((preVetResult.content_score ?? 0) * 100)}%` : 'Pending',     type: 'Input' },
-                  { label: 'Formula',         value: 'risk = 1 − (wallet × 0.5 + content × 0.5)',                                              type: 'Logic' },
-                  { label: 'Low threshold',   value: '< 30 → Auto-Approved',                                                                   type: 'Config' },
-                  { label: 'Medium threshold',value: '30–65 → Flagged for Review',                                                             type: 'Config' },
-                  { label: 'High threshold',  value: '> 65 → Auto-Rejected',                                                                   type: 'Config' },
+                  { label: 'Wallet Score',     value: preVetResult ? `${Math.round((preVetResult.wallet_score  ?? 0) * 100)}%` : 'Pending', type: 'Input'  },
+                  { label: 'Content Score',    value: preVetResult ? `${Math.round((preVetResult.content_score ?? 0) * 100)}%` : 'Pending', type: 'Input'  },
+                  { label: 'Formula',          value: 'risk = 1 − (wallet × 0.5 + content × 0.5)',                                          type: 'Logic'  },
+                  { label: 'Low threshold',    value: '< 30 → Auto-Approved',                                                               type: 'Config' },
+                  { label: 'Medium threshold', value: '30–65 → Flagged for Review',                                                         type: 'Config' },
+                  { label: 'High threshold',   value: '> 65 → Auto-Rejected',                                                               type: 'Config' },
                 ],
                 outputs: nodeStates.score === 'done' && preVetResult ? [
-                  { label: 'Risk Score',   value: `${pct} / 100`,                                                                              good: pct < 30 },
-                  { label: 'Verdict',      value: preVetResult.verdict === 'auto_approve' ? '✅ Auto-Approved' : preVetResult.verdict === 'flag_for_review' ? '⚠️ Flagged for Review' : '🚫 Rejected', good: preVetResult.verdict === 'auto_approve' },
-                  { label: 'Can Deploy',   value: preVetResult.can_deploy ? '✅ Yes' : '❌ Blocked',                                           good: preVetResult.can_deploy },
+                  { label: 'Risk Score', value: `${pct} / 100`,                                                                                                                            good: pct < 30                              },
+                  { label: 'Verdict',    value: preVetResult.verdict === 'auto_approve' ? 'Auto-Approved' : preVetResult.verdict === 'flag_for_review' ? 'Flagged for Review' : 'Rejected', good: preVetResult.verdict === 'auto_approve' },
+                  { label: 'Can Deploy', value: preVetResult.can_deploy ? 'Yes' : 'Blocked',                                                                                               good: preVetResult.can_deploy                },
                 ] : [],
                 scoring: 'The final score gates deployment. > 65 = blocked. 30–65 = deployed with a manual review flag. < 30 = auto-approved.',
               },
@@ -599,34 +596,30 @@ export default function CreatePage() {
                     {nodes.map((node, i) => {
                       const ns = nodeStates[node.id];
                       const isOpen = expandedNode === node.id;
-
                       return (
                         <div key={node.id}>
-                          {/* Node card */}
                           <motion.div
                             initial={{ opacity: 0, x: -8 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.1 }}
                             className={`border rounded-2xl overflow-hidden transition-all duration-300 ${
-                              ns === 'running' ? 'border-sky-300 bg-sky-50/60 shadow-sm' :
-                              ns === 'done'    ? 'border-emerald-200 bg-emerald-50/30' :
+                              ns === 'running' ? 'border-black bg-zinc-50 shadow-sm' :
+                              ns === 'done'    ? 'border-zinc-300 bg-white' :
                               'border-zinc-200 bg-zinc-50/40'
                             }`}
                           >
                             {/* Node header row */}
                             <div className="flex items-center gap-3 px-4 py-3">
                               <NodeStatusIcon state={ns} />
-                              <node.icon className={`w-4 h-4 shrink-0 ${ns === 'running' ? 'text-sky-500' : ns === 'done' ? 'text-emerald-500' : 'text-zinc-400'}`} />
+                              <node.icon className={`w-4 h-4 shrink-0 ${ns === 'running' ? 'text-black' : ns === 'done' ? 'text-zinc-800' : 'text-zinc-400'}`} />
                               <div className="flex-1 min-w-0">
-                                <div className={`text-sm font-semibold ${ns === 'running' ? 'text-sky-700' : ns === 'done' ? 'text-zinc-800' : 'text-zinc-400'}`}
+                                <div className={`text-sm font-semibold ${ns === 'running' ? 'text-black' : ns === 'done' ? 'text-zinc-800' : 'text-zinc-400'}`}
                                   style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                                   {node.label}
                                 </div>
                                 <div className="text-[11px] text-zinc-400 truncate mt-0.5">{node.desc}</div>
                               </div>
-                              {/* Method tag */}
                               <Tag label={node.method.label} color={node.method.color} />
-                              {/* Pulsing dots while running */}
                               {ns === 'running' && (
                                 <div className="flex gap-1 ml-1">
                                   {[0,1,2].map(d => (
@@ -634,7 +627,6 @@ export default function CreatePage() {
                                   ))}
                                 </div>
                               )}
-                              {/* Expand toggle */}
                               <button
                                 onClick={() => toggleExpand(node.id)}
                                 className={`p-1.5 rounded-lg transition-all text-xs font-bold tracking-widest ${
@@ -658,7 +650,7 @@ export default function CreatePage() {
                                 >
                                   <div className="border-t border-zinc-100 px-4 pt-3 pb-1">
                                     <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">
-                                      📥 Input Data
+                                      Input Data
                                     </p>
                                     <div className="space-y-1.5">
                                       {node.inputs.map(inp => (
@@ -683,7 +675,7 @@ export default function CreatePage() {
                                     </div>
                                     <div className="mt-3 p-2.5 bg-zinc-50 border border-zinc-100 rounded-lg">
                                       <p className="text-[10px] text-zinc-400">
-                                        <span className="font-semibold text-zinc-500">⚖️ Scoring note: </span>
+                                        <span className="font-semibold text-zinc-500">Scoring note: </span>
                                         {node.scoring}
                                       </p>
                                     </div>
@@ -692,28 +684,28 @@ export default function CreatePage() {
                               )}
                             </AnimatePresence>
 
-                            {/* Output data — shown when done, or loading skeleton when running */}
+                            {/* Output data */}
                             <AnimatePresence>
                               {ns === 'running' && isOpen && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.3 }}
-                                  className="border-t border-sky-100/50 px-4 py-3"
-                                >
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <Loader2 className="w-3 h-3 text-sky-500 animate-spin" />
-                                    <p className="text-[10px] font-bold text-sky-600 uppercase tracking-widest">
-                                      Computing Output…
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2.5 opacity-60">
-                                    <div className="h-2 bg-sky-200/40 rounded w-full animate-pulse" />
-                                    <div className="h-2 bg-sky-200/40 rounded w-3/4 animate-pulse" />
-                                    <div className="h-2 bg-sky-200/40 rounded w-1/2 animate-pulse" />
-                                  </div>
-                                </motion.div>
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="border-t border-zinc-100 px-4 py-3"
+                                  >
+                                    <div className="flex items-center gap-2 mb-3">
+                                      <Loader2 className="w-3 h-3 text-black animate-spin" />
+                                      <p className="text-[10px] font-bold text-zinc-900 uppercase tracking-widest">
+                                        Computing Output…
+                                      </p>
+                                    </div>
+                                    <div className="space-y-2.5 opacity-60">
+                                      <div className="h-2 bg-zinc-200 rounded w-full animate-pulse" />
+                                      <div className="h-2 bg-zinc-200 rounded w-3/4 animate-pulse" />
+                                      <div className="h-2 bg-zinc-200 rounded w-1/2 animate-pulse" />
+                                    </div>
+                                  </motion.div>
                               )}
                               {ns === 'done' && node.outputs.length > 0 && (
                                 <motion.div
@@ -724,7 +716,7 @@ export default function CreatePage() {
                                   className="border-t border-emerald-100 px-4 py-3"
                                 >
                                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">
-                                    📤 Output
+                                    Output
                                   </p>
                                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                                     {node.outputs.map(({ label, value, good }) => (
@@ -743,7 +735,7 @@ export default function CreatePage() {
                           {i < nodes.length - 1 && (
                             <div className="flex justify-center py-1">
                               <div className={`w-0.5 h-4 rounded-full transition-colors duration-500 ${
-                                nodeStates[nodes[i+1].id] !== 'idle' ? 'bg-sky-300' : 'bg-zinc-200'
+                                nodeStates[nodes[i+1].id] !== 'idle' ? 'bg-black' : 'bg-zinc-200'
                               }`} />
                             </div>
                           )}
@@ -753,7 +745,7 @@ export default function CreatePage() {
                   </div>
                 </div>
 
-                {/* Final result card â€” shown after all nodes complete */}
+                {/* Final result card */}
                 <AnimatePresence>
                   {preVetState === 'done' && preVetResult && (
                     <motion.div
@@ -776,9 +768,9 @@ export default function CreatePage() {
                               preVetResult.verdict === 'auto_approve' ? 'text-emerald-700' :
                               preVetResult.verdict === 'flag_for_review' ? 'text-amber-700' : 'text-red-700'
                             }`}>
-                              {preVetResult.verdict === 'auto_approve' ? 'Low Risk â€” Ready to Deploy' :
-                               preVetResult.verdict === 'flag_for_review' ? 'Medium Risk â€” Will be manually reviewed' :
-                               'High Risk â€” Deployment Blocked'}
+                              {preVetResult.verdict === 'auto_approve' ? 'Low Risk — Ready to Deploy' :
+                               preVetResult.verdict === 'flag_for_review' ? 'Medium Risk — Will be manually reviewed' :
+                               'High Risk — Deployment Blocked'}
                             </div>
                             <div className="text-xs text-zinc-400 mt-0.5">Analysis complete</div>
                           </div>
@@ -788,7 +780,6 @@ export default function CreatePage() {
                         </div>
                       </div>
 
-                      {/* Animated score bar */}
                       <div>
                         <div className="h-3 bg-white/60 rounded-full overflow-hidden border border-white">
                           <motion.div
@@ -800,7 +791,7 @@ export default function CreatePage() {
                           />
                         </div>
                         <div className="flex justify-between text-[10px] text-zinc-400 mt-1">
-                          <span>0 â€” Safe</span><span>65 â€” Review</span><span>100 â€” Blocked</span>
+                          <span>0 — Safe</span><span>65 — Review</span><span>100 — Blocked</span>
                         </div>
                       </div>
 
@@ -817,11 +808,8 @@ export default function CreatePage() {
                       )}
 
                       {preVetResult.can_deploy ? (
-                        <button
-                          onClick={() => setStep(4)}
-                          className="btn-primary w-full flex items-center justify-center gap-2 py-3"
-                        >
-                          <ChevronRight className="w-4 h-4" /> Continue to Review & Deploy
+                        <button onClick={() => setStep(4)} className="btn-primary w-full flex items-center justify-center gap-2 py-3">
+                          <ChevronRight className="w-4 h-4" /> Continue to Review &amp; Deploy
                         </button>
                       ) : (
                         <div className="flex items-start gap-2 p-3 bg-red-100 rounded-lg text-xs text-red-700">
@@ -842,7 +830,7 @@ export default function CreatePage() {
                     <AlertTriangle className="w-5 h-5 text-zinc-400 shrink-0 mt-0.5" />
                     <div>
                       <div className="font-semibold text-sm text-zinc-700">Risk check unavailable</div>
-                      <div className="text-xs text-zinc-500 mt-0.5">Agent backend is offline. You can still proceed â€” your campaign will be reviewed manually after deployment.</div>
+                      <div className="text-xs text-zinc-500 mt-0.5">Agent backend is offline. You can still proceed — your campaign will be reviewed manually after deployment.</div>
                       <button onClick={() => setStep(4)} className="btn-primary mt-3 px-4 py-2 text-sm flex items-center gap-2">
                         <ChevronRight className="w-4 h-4" /> Continue Anyway
                       </button>
@@ -851,9 +839,7 @@ export default function CreatePage() {
                 )}
               </div>
             );
-          })()}
-
-          {/* â”€â”€ STEP 4: Review & Deploy â”€â”€ */}
+          })()}          {/* â”€â”€ STEP 4: Review & Deploy â”€â”€ */}
           {step === 4 && (
             <div className="space-y-5">
               <div className={card}>
