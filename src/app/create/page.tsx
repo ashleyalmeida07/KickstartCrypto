@@ -3,8 +3,9 @@
 import { useSession } from 'next-auth/react';
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
 import { parseEther } from 'viem';
+import { sepolia } from 'viem/chains';
 import { useRouter } from 'next/navigation';
 import {
   Upload, Plus, Trash2, ChevronLeft, ChevronRight,
@@ -44,7 +45,8 @@ const DEFAULT_FORM: FormData = {
 
 export default function CreatePage() {
   const router = useRouter();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
+  const { switchChain } = useSwitchChain();
   const { data: session } = useSession();
 
   const [step, setStep]   = useState(0);
@@ -93,7 +95,7 @@ export default function CreatePage() {
   });
 
 
-  /* â”€â”€ Derived â”€â”€ */
+  /* ── Derived ── */
   const totalMilestonePercent = form.milestones.reduce((s, m) => s + Number(m.percentage), 0);
   const isStep0Valid = form.title.length > 3 && form.shortDescription.length > 10;
   const isStep1Valid = parseFloat(form.goalEth) > 0 && form.durationDays >= 1;
@@ -103,7 +105,7 @@ export default function CreatePage() {
   const canDeploy    = isConnected && isStep0Valid && isStep1Valid && isStep2Valid
     && (preVetResult === null || preVetResult.can_deploy);
 
-  /* â”€â”€ Pre-vet runner with per-node live state â”€â”€ */
+  /* ── Pre-vet runner with per-node live state ── */
   const runPreVet = useCallback(async () => {
     if (!address || !isStep0Valid || !isStep1Valid) return;
     setPreVetState('running');
@@ -149,7 +151,7 @@ export default function CreatePage() {
   }, [step, preVetState, runPreVet]);
 
 
-  /* â”€â”€ Helpers â”€â”€ */
+  /* ── Helpers ── */
   const updateForm = (u: Partial<FormData>) => setForm(prev => ({ ...prev, ...u }));
 
   const handleThumbnail = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,7 +177,7 @@ export default function CreatePage() {
     // 1ï¸âƒ£  Upload thumbnail to Supabase Storage (if the user selected one)
     let imageUrl = form.thumbnailCid || '';
     if (form.thumbnailFile && !imageUrl) {
-      const uploadToast = toast.loading('Uploading image to Supabaseâ€¦');
+      const uploadToast = toast.loading('Uploading image to Supabase…');
       try {
         imageUrl = await uploadCampaignImage(form.thumbnailFile);
         updateForm({ thumbnailCid: imageUrl });
@@ -208,21 +210,26 @@ export default function CreatePage() {
       rewardTiers: form.rewardTiers,
     });
 
-    writeContract({
-      address:      CAMPAIGN_FACTORY_ADDRESS,
-      abi:          CAMPAIGN_FACTORY_ABI,
-      functionName: 'createCampaign',
-      args: [
-        parseEther(form.goalEth),
-        BigInt(form.durationDays * 86400),
-        form.milestones.map(m => m.title.trim()),
-        form.milestones.map(m => m.description.trim()),
-        form.milestones.map(m => Number(m.percentage)),
-      ],
-    });
+    try {
+      writeContract({
+        address:      CAMPAIGN_FACTORY_ADDRESS,
+        abi:          CAMPAIGN_FACTORY_ABI,
+        functionName: 'createCampaign',
+        args: [
+          parseEther(form.goalEth || '0'),
+          BigInt((form.durationDays || 0) * 86400),
+          form.milestones.map(m => m.title.trim()),
+          form.milestones.map(m => m.description.trim()),
+          form.milestones.map(m => Number(m.percentage)),
+        ],
+      });
+    } catch (err) {
+      setDeploying(false);
+      toast.error(`Setup error: ${(err as Error).message}`);
+    }
   };
 
-  /* â”€â”€ Shared label style â”€â”€ */
+  /* ── Shared label style ── */
   const label = 'block text-xs font-semibold text-zinc-600 uppercase tracking-widest mb-1.5';
   const hint  = 'text-xs text-zinc-400 mt-1';
   const card  = 'bg-white border border-zinc-200 p-7 space-y-5';
@@ -279,7 +286,7 @@ export default function CreatePage() {
           exit={{ opacity: 0, x: -20 }}
           transition={{ duration: 0.25 }}
         >
-          {/* â”€â”€ STEP 0: Basic Info â”€â”€ */}
+          {/* ── STEP 0: Basic Info ── */}
           {step === 0 && (
             <div className={card}>
               <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -322,7 +329,7 @@ export default function CreatePage() {
                     <>
                       <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                       <p className="text-sm text-slate-600 font-medium">Click to upload thumbnail</p>
-                      <p className={hint}>JPEG, PNG, WebP â€” max 10 MB</p>
+                      <p className={hint}>JPEG, PNG, WebP — max 10 MB</p>
                     </>
                   )}
                 </div>
@@ -331,7 +338,7 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* â”€â”€ STEP 1: Funding â”€â”€ */}
+          {/* ── STEP 1: Funding ── */}
           {step === 1 && (
             <div className={card}>
               <h2 className="font-bold text-xl text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
@@ -348,7 +355,7 @@ export default function CreatePage() {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-500 font-bold">ETH</span>
                 </div>
                 {form.goalEth && (
-                  <p className={hint}>â‰ˆ ${(parseFloat(form.goalEth) * 3200).toLocaleString(undefined, { maximumFractionDigits: 0 })} USD at current rates</p>
+                  <p className={hint}>≈ ${(parseFloat(form.goalEth) * 3200).toLocaleString(undefined, { maximumFractionDigits: 0 })} USD at current rates</p>
                 )}
               </div>
 
@@ -396,7 +403,7 @@ export default function CreatePage() {
             </div>
           )}
 
-          {/* â”€â”€ STEP 2: Milestones â”€â”€ */}
+          {/* ── STEP 2: Milestones ── */}
           {step === 2 && (
             <div className={card}>
               <div className="flex items-center justify-between">
@@ -772,12 +779,21 @@ export default function CreatePage() {
                           <ChevronRight className="w-4 h-4" /> Continue to Review &amp; Deploy
                         </button>
                       ) : (
-                        <div className="flex items-start gap-2 p-3 bg-red-100 rounded-lg text-xs text-red-700">
-                          <ShieldX className="w-4 h-4 shrink-0 mt-0.5" />
-                          <div>
-                            <div className="font-semibold mb-0.5">Deployment blocked</div>
-                            Your campaign scored too high on risk. Please go back and update your title, description, or reduce your funding goal to a realistic amount.
+                        <div className="space-y-3">
+                          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                            <ShieldX className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                            <div>
+                              <div className="font-semibold mb-0.5">Deployment blocked</div>
+                              Your campaign scored too high on risk. Please go back and update your title, description, or reduce your funding goal to a realistic amount.
+                            </div>
                           </div>
+                          <button 
+                            onClick={() => setStep(4)} 
+                            className="w-full py-2 text-xs font-semibold text-zinc-500 bg-zinc-50 hover:bg-zinc-100 transition-colors border border-dashed border-zinc-300 flex items-center justify-center gap-2"
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            Force Continue to Step 4 (Just for Development)
+                          </button>
                         </div>
                       )}
                     </motion.div>
@@ -799,7 +815,7 @@ export default function CreatePage() {
                 )}
               </div>
             );
-          })()}          {/* â”€â”€ STEP 4: Review & Deploy â”€â”€ */}
+          })()}          {/* ── STEP 4: Review & Deploy ── */}
           {step === 4 && (
             <div className="space-y-5">
               <div className={card}>
@@ -816,7 +832,7 @@ export default function CreatePage() {
                     <h3 className="font-bold text-xl text-zinc-900 mb-2" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                       Campaign Deployed
                     </h3>
-                    <p className="text-zinc-500 text-sm mb-4">Your campaign is live on Sepolia. Redirecting to Exploreâ€¦</p>
+                    <p className="text-zinc-500 text-sm mb-4">Your campaign is live on Sepolia. Redirecting to Explore…</p>
                     {txHash && <TxHashBadge txHash={txHash} label="View on Etherscan" className="mx-auto" />}
                   </div>
                 ) : (
@@ -831,7 +847,7 @@ export default function CreatePage() {
                           <span className="font-semibold">AI Risk Score: {Math.round(preVetResult.risk_score * 100)}/100</span>
                           <span className="text-zinc-500 ml-2">Â·</span>
                           <span className="ml-2 text-zinc-500">
-                            {preVetResult.verdict === 'auto_approve' ? 'Low risk â€” auto approved' : 'Medium risk â€” will be reviewed after deployment'}
+                            {preVetResult.verdict === 'auto_approve' ? 'Low risk — auto approved' : 'Medium risk — will be reviewed after deployment'}
                           </span>
                         </div>
                       </div>
@@ -840,13 +856,13 @@ export default function CreatePage() {
                     {/* Summary table */}
                     <div className="rounded-xl border border-slate-200 overflow-hidden">
                       {[
-                        { label: 'Title',         value: form.title || 'â€”'                                },
+                        { label: 'Title',         value: form.title || '—'                                },
                         { label: 'Category',      value: form.category                                   },
-                        { label: 'Goal',          value: form.goalEth ? `${form.goalEth} ETH` : 'â€”'      },
+                        { label: 'Goal',          value: form.goalEth ? `${form.goalEth} ETH` : '—'      },
                         { label: 'Duration',      value: `${form.durationDays} days`                     },
                         { label: 'Milestones',    value: `${form.milestones.length} defined`             },
                         { label: 'Reward Tiers',  value: `${form.rewardTiers.length} defined`            },
-                        { label: 'Creator',       value: address ? `${address.slice(0,6)}â€¦${address.slice(-4)}` : 'Not connected' },
+                        { label: 'Creator',       value: address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'Not connected' },
                         { label: 'Network',       value: 'Sepolia Testnet'                               },
                         { label: 'Platform Fee',  value: '2.5%'                                          },
                       ].map(({ label, value }, i) => (
@@ -887,25 +903,47 @@ export default function CreatePage() {
                     {txHash && !deployed && (
                       <div className="p-4 bg-zinc-50 border border-zinc-200">
                         <p className="text-xs text-zinc-600 font-semibold mb-2 flex items-center gap-2">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Transaction submitted â€” waiting for on-chain confirmationâ€¦
+                          <Loader2 className="w-3 h-3 animate-spin" /> Transaction submitted — waiting for on-chain confirmation…
                         </p>
                         <TxHashBadge txHash={txHash} />
                       </div>
                     )}
 
                     {/* Deploy button */}
-                    <button
-                      id="deploy-btn"
-                      onClick={handleDeploy}
-                      disabled={!canDeploy || deploying}
-                      className="btn-primary w-full py-3.5 text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
-                    >
-                      {deploying
-                        ? <><Loader2 className="w-4 h-4 animate-spin" /> Deploying Contractâ€¦</>
-                        : <><Rocket className="w-4 h-4" /> Deploy Campaign Contract</>
-                      }
-                    </button>
-                    <p className="text-xs text-center text-zinc-400">
+                    {chainId !== sepolia.id ? (
+                      <button
+                        onClick={() => switchChain?.({ chainId: sepolia.id })}
+                        className="btn-primary w-full py-3.5 text-base flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700"
+                      >
+                        <RefreshCw className="w-4 h-4" /> Switch to Sepolia Testnet
+                      </button>
+                    ) : (
+                      <button
+                        id="deploy-btn"
+                        onClick={handleDeploy}
+                        disabled={!canDeploy || deploying}
+                        className="btn-primary w-full py-3.5 text-base disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+                      >
+                        {deploying
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Deploying Contract…</>
+                          : <><Rocket className="w-4 h-4" /> Deploy Campaign Contract</>
+                        }
+                      </button>
+                    )}
+
+                    {/* Dev Mode Force Launch */}
+                    {preVetResult && !preVetResult.can_deploy && (
+                      <button
+                        onClick={handleDeploy}
+                        disabled={deploying || !isConnected}
+                        className="w-full py-2 text-xs font-semibold text-zinc-500 bg-zinc-50 hover:bg-zinc-100 transition-colors border border-dashed border-zinc-300 flex items-center justify-center gap-2 mt-2"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Force Launch (Just for Development)
+                      </button>
+                    )}
+
+                    <p className="text-xs text-center text-zinc-400 mt-4">
                       Calls <code className="bg-zinc-100 px-1.5 py-0.5 text-zinc-600">CampaignFactory.createCampaign()</code> on Sepolia Testnet
                     </p>
                   </>
@@ -927,7 +965,7 @@ export default function CreatePage() {
           >
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
-          {/* Step 3 (AI Check) uses its own CTA buttons â€” hide generic Next */}
+          {/* Step 3 (AI Check) uses its own CTA buttons — hide generic Next */}
           {step < STEPS.length - 1 && step !== 3 && (
             <button
               id="next-step"

@@ -7,6 +7,7 @@ import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SessionProvider } from 'next-auth/react';
 import { config } from '@/lib/wagmi';
+import { sepolia } from 'viem/chains';
 import { Toaster } from 'react-hot-toast';
 import { useState, useEffect } from 'react';
 import { DeploymentProvider } from '@/context/DeploymentContext';
@@ -173,6 +174,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <WagmiProvider config={config}>
         <QueryClientProvider client={queryClient}>
           <RainbowKitProvider
+            initialChain={sepolia}
             avatar={CustomAvatar}
             theme={lightTheme({
               accentColor:           '#09090b',

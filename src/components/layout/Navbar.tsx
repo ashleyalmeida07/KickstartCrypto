@@ -11,30 +11,30 @@ import { useAccount } from 'wagmi';
 import { Logo } from '@/components/ui/Logo';
 
 const NAV_LINKS = [
-  { href: '/explore',   label: 'Explore'   },
-  { href: '/create',    label: 'Launch'    },
+  { href: '/explore', label: 'Explore' },
+  { href: '/create', label: 'Launch' },
   { href: '/dashboard', label: 'Dashboard' },
 ];
 
 export function Navbar() {
-  const pathname  = usePathname();
-  const [scrolled,     setScrolled]     = useState(false);
-  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const pathname = usePathname();
+  const [scrolled, setScrolled] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const { isAuthenticated, user, logout } = useAuth();
   const { isConnected, address } = useAccount();
 
-  const sessionReady  = useAuth().session !== undefined || !isConnected;
+  const sessionReady = useAuth().session !== undefined || !isConnected;
   const showSignInBtn = !isAuthenticated && sessionReady && !isConnected;
 
-  const adminEmails  = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
+  const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
   const adminWallets = (process.env.NEXT_PUBLIC_ADMIN_WALLET_ADDRESSES ?? '').split(',').map(w => w.trim().toLowerCase());
 
   const isAdmin =
-    (user?.email         && adminEmails.includes(user.email.toLowerCase()))  ||
+    (user?.email && adminEmails.includes(user.email.toLowerCase())) ||
     (user?.walletAddress && adminWallets.includes(user.walletAddress.toLowerCase())) ||
-    (address             && adminWallets.includes(address.toLowerCase()));
+    (address && adminWallets.includes(address.toLowerCase()));
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 16);
@@ -47,9 +47,8 @@ export function Navbar() {
       initial={{ y: -64, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className={`fixed top-0 left-0 right-0 z-50 bg-white transition-all duration-200 ${
-        scrolled ? 'border-b border-[#E5E5E5]' : ''
-      }`}
+      className={`fixed top-0 left-0 right-0 z-50 bg-white transition-all duration-200 ${scrolled ? 'border-b border-[#E5E5E5]' : ''
+        }`}
     >
       <div className="max-w-[1280px] mx-auto px-6 py-5 flex items-center justify-between gap-8">
 
@@ -67,9 +66,8 @@ export function Navbar() {
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
-                className={`text-[13px] font-medium uppercase tracking-[0.08em] transition-opacity duration-150 ${
-                  active ? 'text-black opacity-100' : 'text-black opacity-50 hover:opacity-100'
-                }`}
+                className={`text-[13px] font-medium uppercase tracking-[0.08em] transition-opacity duration-150 ${active ? 'text-black opacity-100' : 'text-black opacity-50 hover:opacity-100'
+                  }`}
               >
                 {label}
               </Link>
@@ -79,9 +77,9 @@ export function Navbar() {
 
         {/* ── Right: wallet + auth + Launch CTA ── */}
         <div className="flex items-center gap-3">
-          {/* Wallet connector — hidden on mobile */}
-          <div className="hidden md:block">
-            <ConnectButton accountStatus="avatar" chainStatus="none" showBalance={false} />
+          {/* Wallet connector */}
+          <div>
+            <ConnectButton accountStatus="full" chainStatus="icon" showBalance={false} />
           </div>
 
           {/* User menu (authenticated) */}
@@ -192,16 +190,14 @@ export function Navbar() {
           >
             <div className="px-6 py-6 flex flex-col gap-1">
               <Link href="/" onClick={() => setMobileOpen(false)}
-                className={`py-3 text-sm font-medium uppercase tracking-[0.08em] border-b border-[#E5E5E5] transition-colors ${
-                  pathname === '/' ? 'text-black' : 'text-black/50'
-                }`}>
+                className={`py-3 text-sm font-medium uppercase tracking-[0.08em] border-b border-[#E5E5E5] transition-colors ${pathname === '/' ? 'text-black' : 'text-black/50'
+                  }`}>
                 Home
               </Link>
               {NAV_LINKS.map(({ href, label }) => (
                 <Link key={href} href={href} onClick={() => setMobileOpen(false)}
-                  className={`py-3 text-sm font-medium uppercase tracking-[0.08em] border-b border-[#E5E5E5] transition-colors ${
-                    pathname === href ? 'text-black' : 'text-black/50'
-                  }`}>
+                  className={`py-3 text-sm font-medium uppercase tracking-[0.08em] border-b border-[#E5E5E5] transition-colors ${pathname === href ? 'text-black' : 'text-black/50'
+                    }`}>
                   {label}
                 </Link>
               ))}
