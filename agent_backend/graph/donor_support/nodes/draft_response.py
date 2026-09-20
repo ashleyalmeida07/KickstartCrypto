@@ -37,8 +37,8 @@ RULES:
 """
 
 
-def _llm() -> ChatOpenAI:
-    return ChatOpenAI(
+def _llm():
+    primary = ChatOpenAI(
         model=settings.OPENROUTER_MODEL,
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
@@ -49,6 +49,14 @@ def _llm() -> ChatOpenAI:
             "X-Title": "KickstartCrypto DonorSupport",
         },
     )
+    fallback = ChatOpenAI(
+        model="meta/llama-3.1-70b-instruct",
+        openai_api_key=settings.NVIDIA_API_KEY,
+        openai_api_base="https://integrate.api.nvidia.com/v1",
+        temperature=0.3,
+        max_tokens=512,
+    )
+    return primary.with_fallbacks([fallback])
 
 
 async def draft_response(state: SupportState) -> dict:
