@@ -25,8 +25,26 @@ export function useAuth() {
       import('./web3auth-sfa').then(({ connectSFA }) => {
         connectSFA(idToken).then((provider) => {
           if (provider) {
-             import('wagmi').then(({ custom }) => {
-                connect({ connector: custom(provider) });
+             // Wagmi's injected connector tries to call wallet_requestPermissions,
+             // which Web3Auth forwards to Alchemy (which rejects it). We intercept it here.
+             const patchedProvider = Object.create(provider);
+             patchedProvider.request = async (args: { method: string; params?: any[] }) => {
+               if (args.method === 'wallet_requestPermissions') {
+                 return [{ eth_accounts: {} }];
+               }
+               return provider.request(args);
+             };
+
+             import('wagmi/connectors').then(({ injected }) => {
+                connect({ 
+                  connector: injected({
+                    target: () => ({
+                      id: 'web3auth',
+                      name: 'Web3Auth',
+                      provider: patchedProvider as any,
+                    })
+                  })
+                });
              });
           }
         }).catch(err => {

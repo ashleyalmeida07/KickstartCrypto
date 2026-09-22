@@ -39,14 +39,15 @@ export async function connectSFA(idToken: string) {
   }
 
   const { payload } = decodeToken(idToken);
+  const sub = (payload as any)?.sub;
   
-  if (!payload || !payload.sub) {
+  if (!payload || !sub) {
     throw new Error("Invalid idToken: missing sub field");
   }
 
   await web3authSfa.connect({
     verifier,
-    verifierId: payload.sub, // Google uses 'sub' for the unique user ID
+    verifierId: sub, // Google uses 'sub' for the unique user ID
     idToken,
   });
 
