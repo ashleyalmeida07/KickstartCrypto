@@ -20,6 +20,7 @@ async def get_pool() -> asyncpg.Pool:
     """Return (and lazily create) the shared asyncpg connection pool."""
     global _pool
     if _pool is None:
+        print(f"DEBUG IN WORKER: {settings.DATABASE_URL}", flush=True)
         _pool = await asyncpg.create_pool(
             dsn=settings.DATABASE_URL,
             min_size=2,

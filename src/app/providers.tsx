@@ -120,15 +120,7 @@ function installAnalyticsGuard() {
 // Install immediately at module evaluation — before any SDK code executes
 installAnalyticsGuard();
 
-// ── Wallet connectors ─────────────────────────────────────────────────────────
-const walletList = connectorsForWallets(
-  [{ groupName: 'Your Wallets', wallets: [injectedWallet, coinbaseWallet] }],
-  {
-    appName:   'Kickstart Crypto',
-    projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? 'none',
-  }
-);
-
+// (wallet connectors are now configured directly in wagmi.ts)
 // ── Custom Avatar ─────────────────────────────────────────────────────────────
 const CustomAvatar: AvatarComponent = ({ address, ensImage, size }) => {
   return ensImage ? (
@@ -164,7 +156,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }));
 
   // Re-run after hydration — covers SDKs that initialise lazily
-  useEffect(() => { installAnalyticsGuard(); }, []);
+  useEffect(() => { 
+    installAnalyticsGuard(); 
+  }, []);
 
   return (
     <SessionProvider

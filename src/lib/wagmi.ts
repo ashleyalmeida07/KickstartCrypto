@@ -2,6 +2,7 @@ import { createConfig, http } from 'wagmi';
 import { injected, coinbaseWallet } from 'wagmi/connectors';
 import { sepolia, mainnet } from 'viem/chains';
 
+
 /**
  * Wagmi config using native injected connector.
  *

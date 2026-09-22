@@ -4,15 +4,29 @@ Pydantic settings — reads from agent_backend/.env
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+import os
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     # Database
     DATABASE_URL: str
+
+    # ── Platform hot wallet (auto-settlement engine) ──────────────────────────
+    # Private key of the platform wallet that calls settle() on expired campaigns.
+    # Must hold a small amount of Sepolia ETH for gas (~0.05 ETH covers hundreds
+    # of settle() calls). Generate one with: python gen_wallet.py
+    PLATFORM_PRIVATE_KEY: str = ""
+
+    # Sepolia RPC — use your Alchemy/Infura URL for reliability
+    RPC_URL: str = "https://rpc2.sepolia.org"
+
+    # How often the settlement sweep runs (seconds). Default: 5 minutes.
+    SETTLE_INTERVAL_SECONDS: int = 300
 
     # OpenRouter
     OPENROUTER_API_KEY: str = ""

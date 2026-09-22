@@ -63,10 +63,12 @@ from models.milestone_schemas import (
 from graph import vetting_graph
 from graph.donor_support import donor_support_graph
 from graph.milestone_proof import milestone_proof_graph
+from crew.crew import run_admin_report_crew
 from graph.nodes.wallet_check import check_wallet_history
 from graph.nodes.content_check import content_authenticity_check
 from graph.nodes.risk_scorer import risk_scorer
 from graph.nodes.router import conditional_router
+from graph.nodes.auto_settle import run_settlement_sweep
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -75,6 +77,9 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+# Shared state for the settlement engine status
+_last_sweep_result: dict = {"status": "not_run_yet"}
 
 
 # ─── App lifecycle ────────────────────────────────────────────────────────────
@@ -189,6 +194,29 @@ async def lifespan(app: FastAPI):
             asyncio.create_task(run_milestone_proof_graph(row["id"]))
     else:
         logger.info("✅ No pending proofs to retry.")
+
+    # ── Start auto-settlement background loop ────────────────────────────────
+    if settings.PLATFORM_PRIVATE_KEY:
+        async def _settlement_loop():
+            global _last_sweep_result
+            interval = settings.SETTLE_INTERVAL_SECONDS
+            logger.info(f"⏰  Settlement engine active — sweeping every {interval}s")
+            while True:
+                try:
+                    pool = await get_pool()
+                    result = await run_settlement_sweep(pool)
+                    result["status"] = "ok"
+                    _last_sweep_result = result
+                except Exception as e:
+                    logger.error(f"[settle_loop] Error: {e}")
+                    _last_sweep_result = {"status": "error", "error": str(e)}
+                await asyncio.sleep(interval)
+        asyncio.create_task(_settlement_loop())
+    else:
+        logger.warning(
+            "⚠️  PLATFORM_PRIVATE_KEY not set — auto-settlement disabled. "
+            "Add it to agent_backend/.env and restart."
+        )
 
     yield
     logger.info("🛑 Agent backend shutting down…")
@@ -1067,6 +1095,73 @@ async def resolve_milestone_proof(proof_id: str, body: ResolveProofRequest):
         "payout_status": payout_status,
     }
 
+
+# ─── CrewAI Admin Reporting ───────────────────────────────────────────────────
+
+@app.post("/admin/report/generate", status_code=202)
+async def generate_admin_report(background_tasks: BackgroundTasks):
+    """
+    Trigger the CrewAI agents to generate an admin report asynchronously.
+    """
+    async def _run_and_save():
+        try:
+            pool = await get_pool()
+            # Run the CrewAI kickoff in a thread to avoid blocking the event loop
+            report_md = await asyncio.to_thread(run_admin_report_crew)
+            
+            # Save the report to the database
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "INSERT INTO admin_reports (report_markdown) VALUES ($1)",
+                    report_md
+                )
+            logger.info("CrewAI Admin Report generated and saved to DB.")
+        except Exception as e:
+            logger.error(f"Error generating Admin Report: {e}")
+
+    background_tasks.add_task(_run_and_save)
+    return {"message": "CrewAI reporting agents kicked off in the background."}
+
+@app.get("/admin/reports")
+async def get_admin_reports():
+    """Fetch all generated admin reports, descending by creation date."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT id, created_at, report_markdown FROM admin_reports ORDER BY created_at DESC")
+        return [dict(r) for r in rows]
+
+# ─── Auto-Settlement Engine ───────────────────────────────────────────────────
+
+@app.post("/admin/settle/run", status_code=202)
+async def manual_settle_run(background_tasks: BackgroundTasks):
+    """
+    Manually trigger an immediate settlement sweep.
+    Useful for testing or forcing settlement outside the automatic schedule.
+    """
+    async def _sweep():
+        global _last_sweep_result
+        try:
+            pool = await get_pool()
+            result = await run_settlement_sweep(pool)
+            result["status"] = "ok"
+            _last_sweep_result = result
+        except Exception as e:
+            logger.error(f"[manual settle] Error: {e}")
+            _last_sweep_result = {"status": "error", "error": str(e)}
+
+    background_tasks.add_task(_sweep)
+    return {"message": "Settlement sweep triggered. Check /admin/settle/status for results."}
+
+
+@app.get("/admin/settle/status")
+async def get_settle_status():
+    """Return the result of the most recent settlement sweep."""
+    has_key = bool(settings.PLATFORM_PRIVATE_KEY)
+    return {
+        "engine_active":  has_key,
+        "interval_seconds": settings.SETTLE_INTERVAL_SECONDS if has_key else None,
+        "last_sweep":     _last_sweep_result,
+    }
 
 # ─── Dev entrypoint ───────────────────────────────────────────────────────────
 

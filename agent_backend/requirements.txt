@@ -2,11 +2,13 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 
-# ─── LangGraph / LangChain ───────────────────────────────────
+# ─── LangGraph / LangChain / CrewAI ──────────────────────────
 langgraph>=0.2.28
 langchain>=0.3.0
 langchain-openai>=0.2.0          # used for OpenRouter (OpenAI-compatible)
 langchain-core>=0.3.0
+langchain-community>=0.3.0
+crewai>=0.80.0
 
 # ─── Database ────────────────────────────────────────────────
 asyncpg>=0.29.0
@@ -23,3 +25,8 @@ pydantic-settings>=2.5.0
 # ─── Utilities ───────────────────────────────────────────────
 tenacity>=8.1.0,<9.0.0           # pinned to langchain-core's constraint
 pypdf>=5.0.0                     # PDF text extraction for Flow 3 proof parsing
+
+# ─── Blockchain / Auto-Settlement ───────────────────────────────────
+web3>=8.0.0                      # Ethereum RPC client for auto settle()
+eth-account>=0.14.0              # Key management & transaction signing
+nest_asyncio>=1.6.0              # Allow asyncio.run inside FastAPI

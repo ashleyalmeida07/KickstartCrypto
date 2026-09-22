@@ -1,9 +1,9 @@
 'use client';
 
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { useAccount, useSignMessage, useDisconnect } from 'wagmi';
+import { useAccount, useSignMessage, useDisconnect, useConnect } from 'wagmi';
 import { createSiweMessage } from 'viem/siwe';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 export function useAuth() {
@@ -15,6 +15,26 @@ export function useAuth() {
 
   const isAuthenticated = status === 'authenticated';
   const isLoading       = status === 'loading' || loading;
+
+  const { connect } = useConnect();
+  const idToken = session?.user?.idToken;
+
+  // Automatically connect the Web3Auth SFA wallet when a Google idToken is present
+  useEffect(() => {
+    if (idToken && !address) {
+      import('./web3auth-sfa').then(({ connectSFA }) => {
+        connectSFA(idToken).then((provider) => {
+          if (provider) {
+             import('wagmi').then(({ custom }) => {
+                connect({ connector: custom(provider) });
+             });
+          }
+        }).catch(err => {
+          console.error("Web3Auth SFA connection failed:", err);
+        });
+      });
+    }
+  }, [idToken, address, connect]);
 
   /**
    * Sign in with MetaMask using SIWE (Sign-In With Ethereum).
@@ -99,6 +119,7 @@ export function useAuth() {
     isAuthenticated,
     isLoading,
     walletAddress: session?.user?.walletAddress ?? address,
+    idToken:       session?.user?.idToken,
     user:          session?.user,
     signInWithWallet,
     signInWithGoogle,

@@ -5,11 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   ShieldAlert, Search, Ban, CheckCircle2, ExternalLink,
   Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
   Users, TrendingUp, Activity, Lock, BarChart3, Wallet,
-  Target, Calendar, ArrowUpRight,
+  Target, Calendar, ArrowUpRight, BrainCircuit, Sparkles, FileText,
+  Zap, CircleDot, CheckCircle, XCircle,
 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { MilestoneProofQueue } from '@/components/ui/MilestoneProofQueue';
@@ -116,6 +119,18 @@ export default function AdminPage() {
   const [backers, setBackers]       = useState<Record<string, Backer[]>>({});
   const [backersLoading, setBackersLoading] = useState<string | null>(null);
 
+  // ── AI Report state ─────────────────────────────────────────────────────────
+  const [reports, setReports]             = useState<{ id: string; created_at: string; report_markdown: string }[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [generating, setGenerating]       = useState(false);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [reportMsg, setReportMsg]         = useState('');
+  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL ?? 'http://localhost:8001';
+
+  // ── Settlement engine state ──────────────────────────────────────────────────
+  const [settleStatus, setSettleStatus]   = useState<any>(null);
+  const [settling, setSettling]           = useState(false);
+
   const adminEmail = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase());
   const userEmail  = session?.user?.email?.toLowerCase();
   const hasAccess  = isAdminWallet(address) || (!!userEmail && adminEmail.includes(userEmail));
@@ -148,6 +163,57 @@ export default function AdminPage() {
   }, [backers]);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+  // ── AI Report helpers ───────────────────────────────────────────────────────
+  const fetchReports = useCallback(async () => {
+    setReportsLoading(true);
+    try {
+      const res = await fetch(`${AGENT_URL}/admin/reports`);
+      if (res.ok) setReports(await res.json());
+    } catch { /* backend may not be running */ }
+    finally { setReportsLoading(false); }
+  }, [AGENT_URL]);
+
+  useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const fetchSettleStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${AGENT_URL}/admin/settle/status`);
+      if (res.ok) setSettleStatus(await res.json());
+    } catch { /* backend may not be running */ }
+  }, [AGENT_URL]);
+
+  useEffect(() => { fetchSettleStatus(); }, [fetchSettleStatus]);
+
+  const handleRunSettle = async () => {
+    setSettling(true);
+    try {
+      await fetch(`${AGENT_URL}/admin/settle/run`, { method: 'POST' });
+      // Poll for result after 3s
+      setTimeout(async () => { await fetchSettleStatus(); setSettling(false); }, 3000);
+    } catch { setSettling(false); }
+  };
+  const handleGenerateReport = async () => {
+    setGenerating(true);
+    setReportMsg('');
+    try {
+      const res = await fetch(`${AGENT_URL}/admin/report/generate`, { method: 'POST' });
+      if (res.ok) {
+        setReportMsg('AI agents kicked off. This takes ~30s — refreshing automatically...');
+        // Poll every 8s for up to 90s
+        let tries = 0;
+        const poll = setInterval(async () => {
+          tries++;
+          await fetchReports();
+          if (tries >= 12) { clearInterval(poll); setGenerating(false); setReportMsg(''); }
+        }, 8000);
+      } else {
+        setReportMsg('Failed to start report generation.');
+        setGenerating(false);
+      }
+    } catch { setReportMsg('Agent backend offline.'); setGenerating(false); }
+  };
+
 
   const handleExpand = (addr: string) => {
     const newExpanded = expanded === addr ? null : addr;
@@ -353,6 +419,83 @@ export default function AdminPage() {
         </motion.div>
       </div>
 
+      {/* ── Settlement Engine Status ────────────────────────────────────────────── */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+        className="bg-white border border-zinc-200 p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Zap className="w-4 h-4 text-amber-500" />
+          <span className="text-sm font-semibold text-zinc-800" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+            Auto-Settlement Engine
+          </span>
+          {settleStatus ? (
+            settleStatus.engine_active
+              ? <span className="ml-1 flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                  <CircleDot className="w-2.5 h-2.5" /> Active
+                </span>
+              : <span className="ml-1 flex items-center gap-1 text-[10px] font-semibold text-zinc-500 bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 rounded-full">
+                  <CircleDot className="w-2.5 h-2.5" /> No Key Set
+                </span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={fetchSettleStatus} className="p-1.5 border border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 transition-colors">
+              <RefreshCw className="w-3 h-3" />
+            </button>
+            <button
+              onClick={handleRunSettle}
+              disabled={settling || !settleStatus?.engine_active}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {settling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+              Run Sweep Now
+            </button>
+          </div>
+        </div>
+
+        {!settleStatus && (
+          <p className="text-xs text-zinc-400">Agent backend offline or not reachable.</p>
+        )}
+
+        {settleStatus && !settleStatus.engine_active && (
+          <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              <strong>PLATFORM_PRIVATE_KEY</strong> is not set in <code>agent_backend/.env</code>.
+              Run <code>python gen_wallet.py</code> to generate one, fund it with Sepolia ETH, then restart the backend.
+            </span>
+          </div>
+        )}
+
+        {settleStatus?.engine_active && settleStatus.last_sweep && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Campaigns Checked', value: settleStatus.last_sweep.swept ?? '—', icon: Activity, color: 'text-zinc-700' },
+              { label: 'Auto-Settled', value: settleStatus.last_sweep.settled ?? '—', icon: CheckCircle, color: 'text-emerald-600' },
+              { label: 'Skipped', value: settleStatus.last_sweep.skipped ?? '—', icon: CircleDot, color: 'text-zinc-400' },
+              { label: 'Errors', value: settleStatus.last_sweep.errors?.length ?? '—', icon: XCircle, color: 'text-red-500' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <div key={label} className="bg-zinc-50 border border-zinc-100 p-3">
+                <div className={`flex items-center gap-1.5 mb-1 ${color}`}>
+                  <Icon className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
+                </div>
+                <div className="text-xl font-bold text-zinc-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {settleStatus?.engine_active && settleStatus.last_sweep?.status === 'not_run_yet' && (
+          <p className="text-xs text-zinc-400">First sweep hasn&apos;t run yet — click &ldquo;Run Sweep Now&rdquo; to test.</p>
+        )}
+
+        {settleStatus?.last_sweep?.timestamp && (
+          <p className="text-[10px] text-zinc-400 mt-3">
+            Last sweep: {new Date(settleStatus.last_sweep.timestamp).toLocaleString()}
+            {settleStatus.interval_seconds && ` · Runs every ${settleStatus.interval_seconds / 60} min`}
+          </p>
+        )}
+      </motion.div>
+
       {/* Top campaigns */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
         className="bg-white border border-zinc-200 p-5 mb-6">
@@ -389,6 +532,85 @@ export default function AdminPage() {
       <div className="mt-8">
         <MilestoneProofQueue />
       </div>
+
+      {/* ── CrewAI Reporting Section ─────────────────────────────────────────── */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-8">
+        <div className="flex items-center gap-2 mb-4">
+          <BrainCircuit className="w-4 h-4 text-purple-500" />
+          <h2 className="text-base font-bold text-zinc-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>AI Platform Reports</h2>
+          <span className="ml-1 text-[10px] font-semibold text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">CrewAI</span>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={fetchReports} className="p-2 border border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 transition-colors" title="Refresh reports">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={handleGenerateReport}
+              disabled={generating}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-700 text-white text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {generating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+              {generating ? 'Generating...' : 'Generate New Report'}
+            </button>
+          </div>
+        </div>
+
+        {reportMsg && (
+          <div className="flex items-center gap-2 p-3 mb-4 bg-purple-50 border border-purple-200 text-purple-700 text-xs">
+            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+            {reportMsg}
+          </div>
+        )}
+
+        {reportsLoading && reports.length === 0 && (
+          <div className="p-8 text-center border border-zinc-200 bg-white">
+            <Loader2 className="w-6 h-6 animate-spin text-zinc-300 mx-auto mb-2" />
+            <p className="text-xs text-zinc-400">Loading reports...</p>
+          </div>
+        )}
+
+        {!reportsLoading && reports.length === 0 && (
+          <div className="p-10 text-center border border-dashed border-zinc-200 bg-white">
+            <BrainCircuit className="w-8 h-8 text-zinc-300 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-zinc-500 mb-1">No reports yet</p>
+            <p className="text-xs text-zinc-400">Click &ldquo;Generate New Report&rdquo; to have your AI crew analyse the platform.</p>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {reports.map((r, i) => (
+            <motion.div key={r.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+              className="border border-zinc-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 transition-colors"
+              >
+                <FileText className="w-4 h-4 text-purple-400 shrink-0" />
+                <div className="flex-1 text-left">
+                  <span className="text-sm font-semibold text-zinc-800" style={{ fontFamily: 'var(--font-space-grotesk)' }}>Platform Report</span>
+                  <span className="text-xs text-zinc-400 ml-3">{new Date(r.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                {expandedReport === r.id ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
+              </button>
+
+              <AnimatePresence>
+                {expandedReport === r.id && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-5 pb-6 pt-2 border-t border-zinc-100 prose prose-sm prose-zinc max-w-none">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{r.report_markdown}</ReactMarkdown>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
 
       {/* ── Campaign Management Table ──────────────────────────────────────────── */}
       <div className="flex items-center gap-2 mb-3 mt-8">

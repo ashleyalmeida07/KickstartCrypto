@@ -126,6 +126,10 @@ export function Navbar() {
                       className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-black hover:bg-[#F7F7F7] transition-colors rounded-xl">
                       <User className="w-3.5 h-3.5 text-black/40" /> My Dashboard
                     </Link>
+                    <Link href="/wallet" onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-black hover:bg-[#F7F7F7] transition-colors rounded-xl">
+                      <ShieldAlert className="w-3.5 h-3.5 text-black/40" /> My Wallet
+                    </Link>
                     <Link href="/settings" onClick={() => setUserMenuOpen(false)}
                       className="flex items-center gap-2.5 px-3 py-2 text-[13px] text-black hover:bg-[#F7F7F7] transition-colors rounded-xl">
                       <Settings className="w-3.5 h-3.5 text-black/40" /> Settings

@@ -18,6 +18,7 @@ declare module 'next-auth' {
       image?: string | null;
       walletAddress?: string | null;
       authProvider?: string;
+      idToken?: string;
     };
   }
 }
@@ -27,6 +28,7 @@ declare module 'next-auth/jwt' {
     userId?: string;
     walletAddress?: string;
     authProvider?: string;
+    idToken?: string;
   }
 }
 
@@ -129,6 +131,11 @@ export const authOptions: AuthOptions = {
     //  JWT: attach extra fields on sign-in
     // ─────────────────────────────────────────────────────────────────
     async jwt({ token, user, account }) {
+      // Capture the Google ID token on initial sign in
+      if (account?.id_token) {
+        token.idToken = account.id_token;
+      }
+
       if (user) {
         token.userId = user.id;
         token.authProvider = account?.provider ?? 'metamask';
@@ -177,6 +184,7 @@ export const authOptions: AuthOptions = {
         session.user.id            = token.userId   as string;
         session.user.walletAddress = token.walletAddress as string | undefined;
         session.user.authProvider  = token.authProvider as string | undefined;
+        session.user.idToken       = token.idToken as string | undefined;
       }
       return session;
     },

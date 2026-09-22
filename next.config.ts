@@ -15,7 +15,6 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       'siwe':                    './src/lib/stubs/siwe.ts',
-      'ethers':                  './src/lib/stubs/ethers.ts',
       '@metamask/sdk-analytics': './src/lib/stubs/metamask-sdk-analytics.ts',
     },
   },
@@ -24,7 +23,6 @@ const nextConfig: NextConfig = {
   webpack(config) {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
-      // Prevent the real analytics package from loading on either client or server
       '@metamask/sdk-analytics': path.resolve(
         './src/lib/stubs/metamask-sdk-analytics.ts'
       ),
