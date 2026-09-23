@@ -150,8 +150,8 @@ export function Navbar() {
             </div>
           )}
 
-          {/* Sign in button */}
-          {showSignInBtn && (
+          {/* Login button (unauthenticated) */}
+          {!isAuthenticated && (
             <div className="hidden md:block">
               <Link href="/auth/login">
                 <button id="signin-btn" className="btn-secondary text-[13px] py-2.5 px-5">

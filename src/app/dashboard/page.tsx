@@ -341,8 +341,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Show nudge if signed in via Google but wallet not connected
-  const showWalletNudge = !!session && !isConnected;
+
 
   return (
     <div className="bg-white min-h-screen">
@@ -385,8 +384,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="max-w-[1280px] mx-auto px-6 py-10">
-        {/* Wallet nudge */}
-        {showWalletNudge && <WalletNudge onConnect={() => openConnectModal?.()} />}
+
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-[#E5E5E5] border border-[#E5E5E5] rounded-2xl overflow-hidden mb-10">
