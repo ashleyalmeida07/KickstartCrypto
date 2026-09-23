@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { Menu, X, LogOut, User, ChevronDown, Settings, ShieldAlert } from 'lucide-react';
@@ -77,10 +77,7 @@ export function Navbar() {
 
         {/* ── Right: wallet + auth + Launch CTA ── */}
         <div className="flex items-center gap-3">
-          {/* Wallet connector */}
-          <div>
-            <ConnectButton accountStatus="full" chainStatus="icon" showBalance={false} />
-          </div>
+
 
           {/* User menu (authenticated) */}
           {isAuthenticated && (
@@ -207,7 +204,7 @@ export function Navbar() {
               ))}
 
               <div className="pt-5 space-y-3">
-                <ConnectButton accountStatus="full" chainStatus="full" showBalance />
+
                 {isAuthenticated ? (
                   <>
                     <Link href="/settings" onClick={() => setMobileOpen(false)}>

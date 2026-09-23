@@ -29,7 +29,7 @@ export function useAuth() {
              // which Web3Auth forwards to Alchemy (which rejects it). We intercept it here.
              const patchedProvider = Object.create(provider);
              patchedProvider.request = async (args: { method: string; params?: any[] }) => {
-               if (args.method === 'wallet_requestPermissions') {
+               if (args.method === 'wallet_requestPermissions' || args.method === 'wallet_revokePermissions') {
                  return [{ eth_accounts: {} }];
                }
                return provider.request(args);
@@ -45,6 +45,11 @@ export function useAuth() {
                     })
                   })
                 });
+
+                if (typeof window !== 'undefined' && !sessionStorage.getItem('wallet_toast_shown')) {
+                  toast.success('✨ An inbuilt wallet has been created for you! You can add funds to it and start using the platform.', { duration: 6000 });
+                  sessionStorage.setItem('wallet_toast_shown', 'true');
+                }
              });
           }
         }).catch(err => {
@@ -127,6 +132,9 @@ export function useAuth() {
    * Sign out from both NextAuth and wagmi.
    */
   const logout = useCallback(async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('wallet_toast_shown');
+    }
     await signOut({ redirect: false });
     disconnect();
     toast('Signed out');
