@@ -107,9 +107,10 @@ function SupportTab({
 }) {
   const [message, setMessage] = useState('');
   const [ticketId, setTicketId] = useState<string | null>(null);
-  const [pollState, setPollState] = useState<'idle' | 'submitting' | 'polling' | 'done' | 'escalated' | 'error'>('idle');
+  const [pollState, setPollState] = useState<'idle' | 'submitting' | 'polling' | 'done' | 'escalated' | 'error' | 'timeout'>('idle');
   const [response, setResponse] = useState<string | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
 
   // Past tickets
   const [pastTickets, setPastTickets]       = useState<any[]>([]);
@@ -150,12 +151,14 @@ function SupportTab({
       const data = await res.json();
       setTicketId(data.ticket_id);
       setPollState('polling');
+      setPollCount(0);
 
-      // Poll every 3 seconds for up to 2 minutes
+      // Poll every 3 seconds for up to 5 minutes
       let attempts = 0;
-      const MAX = 40;
+      const MAX = 100;
       const poll = async () => {
-        if (attempts++ > MAX) { setPollState('error'); return; }
+        if (attempts++ > MAX) { setPollState('timeout'); return; }
+        setPollCount(attempts);
         const r = await fetch(`${AGENT_URL}/donor-support/ticket/${data.ticket_id}`);
         if (!r.ok) { setPollState('error'); return; }
         const t = await r.json();
@@ -234,18 +237,36 @@ function SupportTab({
           </button>
         </div>
       ) : pollState === 'polling' ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm text-sky-600">
+        <div className="space-y-4 py-2">
+          <div className="flex items-center gap-2 text-sm text-sky-600 font-semibold mb-1">
             <Loader2 className="w-4 h-4 animate-spin" />
             <span>AI is analysing your request…</span>
           </div>
-          {['Classifying your intent', 'Fetching your transaction data', 'Checking platform policy', 'Drafting response'].map((s, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs text-slate-500">
-              <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" style={{ animationDelay: `${i * 0.3}s` }} />
-              {s}
-            </div>
-          ))}
-          {ticketId && <p className="text-[11px] text-slate-400 font-mono">Ticket: {ticketId}</p>}
+          
+          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+            <motion.div 
+              className="bg-sky-500 h-2.5 rounded-full" 
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(95, (pollCount / 100) * 100)}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
+          <p className="text-xs text-slate-500">
+            This may take a few minutes as the AI reviews your transaction data and platform policies.
+          </p>
+          
+          {ticketId && <p className="text-[11px] text-slate-400 font-mono mt-2">Ticket: {ticketId}</p>}
+        </div>
+      ) : pollState === 'timeout' ? (
+        <div className="space-y-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div className="flex items-center gap-2 text-red-600 font-bold">
+            <AlertCircle className="w-5 h-5" />
+            <span>AI Generation Timeout</span>
+          </div>
+          <p className="text-sm text-red-700">
+            The AI is taking longer than expected to process your request. Your ticket has been logged and the AI is still working on it in the background. Please refresh the page in a few minutes.
+          </p>
+          <button onClick={() => setPollState('idle')} className="btn-primary w-full mt-2 bg-red-600 hover:bg-red-700 border-none">Dismiss</button>
         </div>
       ) : pollState === 'done' ? (
         <div className="space-y-4">

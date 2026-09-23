@@ -126,6 +126,7 @@ export default function AdminPage() {
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [reportMsg, setReportMsg]         = useState('');
   const [agentStep, setAgentStep]         = useState(-1);
+  const [reportPollCount, setReportPollCount] = useState(0);
 
   const CREW_AGENTS = [
     { Icon: Database,  name: 'Data Collector', desc: 'Fetching platform stats, campaign data & backer records...' },
@@ -210,6 +211,7 @@ export default function AdminPage() {
     try {
       const res = await fetch(`${AGENT_URL}/admin/report/generate`, { method: 'POST' });
       if (res.ok) {
+        setReportPollCount(0);
         // Animate through agent steps every ~8s
         let step = 0;
         const stepTimer = setInterval(() => {
@@ -218,10 +220,11 @@ export default function AdminPage() {
           else clearInterval(stepTimer);
         }, 8000);
 
-        // Poll for completed report every 8s for up to 96s
+        // Poll for completed report every 8s for up to 5+ mins
         let tries = 0;
         const poll = setInterval(async () => {
           tries++;
+          setReportPollCount(tries);
           
           try {
             const currentRes = await fetch(`${AGENT_URL}/admin/reports`);
@@ -241,12 +244,12 @@ export default function AdminPage() {
             }
           } catch { /* ignore network errors during polling */ }
 
-          if (tries >= 12) {
+          if (tries >= 40) {
             clearInterval(poll);
             clearInterval(stepTimer);
             setGenerating(false);
             setAgentStep(-1);
-            setReportMsg('');
+            setReportMsg('Report generation timed out. Please refresh the page later to see if it finished.');
           }
         }, 8000);
       } else {
@@ -607,10 +610,23 @@ export default function AdminPage() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-5 border border-purple-200 bg-purple-50 rounded-xl p-4"
           >
-            <div className="flex items-center gap-2 mb-3">
-              <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
-              <span className="text-sm font-semibold text-purple-800">CrewAI agents are working…</span>
-              <span className="ml-auto text-xs text-purple-400">~30s</span>
+            <div className="flex items-center gap-3 mb-4">
+              <Loader2 className="w-5 h-5 animate-spin text-purple-500 shrink-0" />
+              <div className="flex-1">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-sm font-semibold text-purple-800">CrewAI agents are analyzing platform data…</span>
+                  <span className="text-xs font-bold text-purple-500">{Math.min(95, Math.round((reportPollCount / 40) * 100))}%</span>
+                </div>
+                <div className="w-full bg-purple-200/50 rounded-full h-2 overflow-hidden">
+                  <motion.div 
+                    className="bg-purple-500 h-2 rounded-full" 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(95, (reportPollCount / 40) * 100)}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+                <p className="text-[10px] text-purple-400 mt-1.5">This may take up to 5 minutes as deep reasoning models write the report.</p>
+              </div>
             </div>
             <div className="space-y-2">
               {CREW_AGENTS.map((agent, i) => {

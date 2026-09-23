@@ -4,10 +4,9 @@ from db.config import settings
 from .tools import fetch_platform_stats
 
 def _get_llm():
-    # CrewAI >= 0.80 uses LiteLLM under the hood and expects a string identifier
-    # rather than a LangChain object for optimal compatibility.
-    model_name = settings.OPENROUTER_MODEL
-    # Strip any provider prefix if it already exists, or just prefix it
+    # CrewAI report generation is a background task — use the heavier reasoning
+    # model here for quality. Real-time flows use settings.OPENROUTER_MODEL (fast).
+    model_name = settings.OPENROUTER_MODEL_HEAVY
     if not model_name.startswith("openrouter/"):
         return f"openrouter/{model_name}"
     return model_name

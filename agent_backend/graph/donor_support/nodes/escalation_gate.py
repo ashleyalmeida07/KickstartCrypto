@@ -37,9 +37,9 @@ async def escalation_gate(state: SupportState) -> dict:
         logger.info(f"[escalation_gate] ticket={state.ticket_id} → ESCALATE ({reason})")
         return {"escalate": True, "escalation_reason": reason, "ticket_status": TicketStatus.ESCALATED}
 
-    # Rule 2: Low classification confidence
+    # Rule 2: Low classification confidence (threshold lowered for fast models)
     confidence = state.intent_confidence or 1.0
-    if confidence < 0.6:
+    if confidence < 0.4:
         reason = f"low_intent_confidence_{confidence:.2f}"
         logger.info(f"[escalation_gate] ticket={state.ticket_id} → ESCALATE ({reason})")
         return {"escalate": True, "escalation_reason": reason, "ticket_status": TicketStatus.ESCALATED}

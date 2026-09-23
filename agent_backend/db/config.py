@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_API_KEY_2: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3.5-lightning:free"
+    OPENROUTER_MODEL: str = "google/gemini-flash-1.5"
+    OPENROUTER_MODEL_HEAVY: str = "nvidia/nemotron-3.5-lightning:free"
     # Vision-capable model used by Flow 3 to OCR uploaded receipts/photos.
     # Must accept image_url content blocks — a text-only model will fail to parse
     # image proofs and every image submission will fall through to admin review.

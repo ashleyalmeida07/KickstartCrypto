@@ -88,8 +88,17 @@ export default function CreatePage() {
       },
       onError: (err) => {
         setDeploying(false);
-        deployment.setError(err.message.slice(0, 120));
-        toast.error(err.message.slice(0, 120));
+        const errorString = err.message.toLowerCase();
+        let displayError = err.message.slice(0, 120);
+        
+        if (errorString.includes('insufficient funds')) {
+          displayError = "You don't have enough ETH in your wallet to cover the transaction and gas fees. Please fund your wallet and try again!";
+        } else if (errorString.includes('user rejected') || errorString.includes('user denied')) {
+          displayError = "Transaction was rejected in your wallet.";
+        }
+
+        deployment.setError(displayError);
+        toast.error(displayError, { duration: 6000 });
       },
     },
   });

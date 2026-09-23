@@ -40,7 +40,7 @@ def _llm():
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=256,
-        request_timeout=15.0,
+        request_timeout=30.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto DonorSupport",
@@ -52,7 +52,7 @@ def _llm():
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=256,
-        request_timeout=15.0,
+        request_timeout=30.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto DonorSupport",
@@ -64,7 +64,7 @@ def _llm():
         openai_api_base="https://integrate.api.nvidia.com/v1",
         temperature=0.0,
         max_tokens=256,
-        request_timeout=15.0,
+        request_timeout=30.0,
     )
     return primary.with_fallbacks([fallback_1, fallback_2])
 
@@ -101,4 +101,4 @@ async def classify_intent(state: SupportState) -> dict:
 
     except Exception as exc:
         logger.error(f"[classify_intent] failed: {exc}")
-        return {"intent": SupportIntent.GENERAL_QUESTION, "intent_confidence": 0.5}
+        return {"intent": SupportIntent.GENERAL_QUESTION, "intent_confidence": 0.7}

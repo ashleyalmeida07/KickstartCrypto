@@ -30,7 +30,19 @@ export function ContributeModal({ isOpen, onClose, campaign, onSuccess }: Props)
   const { writeContract } = useWriteContract({
     mutation: {
       onSuccess: (hash) => { setTxHash(hash); setTxStep('pending'); toast.loading('Transaction submitted!', { id: 'tx-toast' }); },
-      onError: (err) => { setTxStep('error'); toast.error(err.message.slice(0, 100)); },
+      onError: (err) => { 
+        setTxStep('error'); 
+        const errorString = err.message.toLowerCase();
+        let displayError = err.message.slice(0, 100);
+        
+        if (errorString.includes('insufficient funds')) {
+          displayError = "You don't have enough ETH in your wallet to cover this contribution and gas fees. Please fund your wallet!";
+        } else if (errorString.includes('user rejected') || errorString.includes('user denied')) {
+          displayError = "Transaction was rejected in your wallet.";
+        }
+
+        toast.error(displayError, { duration: 6000 }); 
+      },
     },
   });
 

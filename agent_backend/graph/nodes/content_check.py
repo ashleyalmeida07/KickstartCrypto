@@ -46,7 +46,7 @@ def _build_llm() -> ChatOpenAI:
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=512,
-        request_timeout=15.0,
+        request_timeout=60.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto Campaign Vetting",
@@ -58,7 +58,7 @@ def _build_llm() -> ChatOpenAI:
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=512,
-        request_timeout=15.0,
+        request_timeout=60.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto Campaign Vetting",
@@ -70,7 +70,7 @@ def _build_llm() -> ChatOpenAI:
         openai_api_base="https://integrate.api.nvidia.com/v1",
         temperature=0.0,
         max_tokens=512,
-        request_timeout=15.0,
+        request_timeout=60.0,
     )
     return primary.with_fallbacks([fallback_1, fallback_2])
 
