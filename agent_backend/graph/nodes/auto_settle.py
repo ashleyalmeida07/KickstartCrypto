@@ -83,14 +83,19 @@ async def fetch_unsettled_campaigns(pool) -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT contract_address, title, deadline, goal_reached, status
-            FROM campaigns
+            SELECT c.contract_address, c.title, c.deadline, c.goal_reached, c.status
+            FROM campaigns c
             WHERE
-                settled    = false
-                AND cancelled  = false
-                AND status NOT IN ('settled', 'cancelled')
-                AND deadline < NOW()
-            ORDER BY deadline ASC
+                c.settled    = false
+                AND c.cancelled  = false
+                AND c.status NOT IN ('settled', 'cancelled')
+                AND c.deadline < NOW()
+                AND NOT EXISTS (
+                    SELECT 1 FROM milestones m 
+                    WHERE m.campaign_address = c.contract_address 
+                    AND m.proof_status != 'verified'
+                )
+            ORDER BY c.deadline ASC
             """
         )
     return [dict(r) for r in rows]

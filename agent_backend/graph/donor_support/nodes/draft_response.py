@@ -50,15 +50,27 @@ def _llm():
             "X-Title": "KickstartCrypto DonorSupport",
         },
     )
-    fallback = ChatOpenAI(
-        model="meta/llama-3.1-70b-instruct",
+    fallback_1 = ChatOpenAI(
+        model=settings.OPENROUTER_MODEL,
+        openai_api_key=settings.OPENROUTER_API_KEY_2,
+        openai_api_base=settings.OPENROUTER_BASE_URL,
+        temperature=0.3,
+        max_tokens=512,
+        request_timeout=15.0,
+        default_headers={
+            "HTTP-Referer": "https://kickstart-crypto.app",
+            "X-Title": "KickstartCrypto DonorSupport",
+        },
+    )
+    fallback_2 = ChatOpenAI(
+        model="nvidia/llama-3.1-nemotron-70b-instruct",
         openai_api_key=settings.NVIDIA_API_KEY,
         openai_api_base="https://integrate.api.nvidia.com/v1",
         temperature=0.3,
         max_tokens=512,
         request_timeout=15.0,
     )
-    return primary.with_fallbacks([fallback])
+    return primary.with_fallbacks([fallback_1, fallback_2])
 
 
 async def draft_response(state: SupportState) -> dict:

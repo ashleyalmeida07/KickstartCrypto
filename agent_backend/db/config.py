@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     OPENROUTER_API_KEY: str = ""
+    OPENROUTER_API_KEY_2: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "nvidia/nemotron-3.5-lightning:free"
     # Vision-capable model used by Flow 3 to OCR uploaded receipts/photos.

@@ -221,13 +221,16 @@ function SupportTab({
           />
           <button
             onClick={submit}
-            disabled={pollState === 'submitting' || !message.trim()}
+            disabled={pollState === 'submitting' || !message.trim() || !userAddress}
             className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50"
           >
-            {pollState === 'submitting'
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
-              : <><Zap className="w-4 h-4" /> Send to AI Support</>
-            }
+            {!userAddress ? (
+              <>Connect Wallet First</>
+            ) : pollState === 'submitting' ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+            ) : (
+              <><Zap className="w-4 h-4" /> Send to AI Support</>
+            )}
           </button>
         </div>
       ) : pollState === 'polling' ? (
@@ -595,9 +598,15 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                     <div className="text-center py-12 text-slate-400">No milestones defined for this campaign.</div>
                   ) : (
                     <>
-                      <p className="text-xs text-slate-500 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
-                        📋 Milestones are informational. To receive funds, the Creator must go to their <strong>Manage Dashboard</strong> and click <strong>Settle</strong> once the goal is reached or the deadline passes.
-                      </p>
+                      {isCreator ? (
+                        <p className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                          👋 <strong>You are the Creator!</strong> To unlock your funds for these milestones, please go to your <Link href={`/manage/${addr}`} className="underline font-semibold">Manage Dashboard</Link> and upload your proof documents.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+                          📋 Milestones are informational. To receive funds, the Creator must go to their <strong>Manage Dashboard</strong> and submit proof of deliverables.
+                        </p>
+                      )}
                       {milestones.map(idx => (
                         <MilestoneRow
                           key={idx}

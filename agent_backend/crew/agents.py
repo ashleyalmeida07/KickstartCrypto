@@ -4,13 +4,31 @@ from db.config import settings
 from .tools import fetch_platform_stats
 
 def _get_llm():
-    return ChatOpenAI(
+    primary = ChatOpenAI(
         model=settings.OPENROUTER_MODEL,
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.7,
         max_tokens=2048,
+        request_timeout=30.0,
     )
+    fallback_1 = ChatOpenAI(
+        model=settings.OPENROUTER_MODEL,
+        openai_api_key=settings.OPENROUTER_API_KEY_2,
+        openai_api_base=settings.OPENROUTER_BASE_URL,
+        temperature=0.7,
+        max_tokens=2048,
+        request_timeout=30.0,
+    )
+    fallback_2 = ChatOpenAI(
+        model="meta/llama-3.1-70b-instruct",
+        openai_api_key=settings.NVIDIA_API_KEY,
+        openai_api_base="https://integrate.api.nvidia.com/v1",
+        temperature=0.7,
+        max_tokens=2048,
+        request_timeout=30.0,
+    )
+    return primary.with_fallbacks([fallback_1, fallback_2])
 
 def create_data_analyst():
     return Agent(
