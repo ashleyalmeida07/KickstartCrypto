@@ -3,8 +3,10 @@
 import { useAccount, useBalance, useDisconnect } from 'wagmi';
 import { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, ExternalLink, ArrowDownToLine, Activity } from 'lucide-react';
+import { Copy, ExternalLink, ArrowDownToLine, Activity, History, Loader2, ArrowUpRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatEther } from 'viem';
+import Link from 'next/link';
 
 export default function WalletDashboard() {
   const { address, isConnected, connector } = useAccount();
@@ -12,7 +14,21 @@ export default function WalletDashboard() {
   const { disconnect } = useDisconnect();
 
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [contributions, setContributions] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    if (address) {
+      setLoadingHistory(true);
+      fetch(`/api/user/contributions?address=${address}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.contributions) setContributions(data.contributions);
+        })
+        .finally(() => setLoadingHistory(false));
+    }
+  }, [address]);
 
   if (!mounted) return null;
 
@@ -117,22 +133,83 @@ export default function WalletDashboard() {
           </div>
         </div>
 
-        {/* Transaction History Placeholder */}
-        <div className="bg-white border border-zinc-200 rounded-xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-zinc-500 uppercase tracking-wider mb-6">Recent Transactions</h2>
-          <div className="text-center py-12">
-            <Activity className="w-8 h-8 text-zinc-300 mx-auto mb-3" />
-            <p className="text-zinc-500 text-sm">
-              Your recent transactions will appear here.
-            </p>
-            <a
-              href={`https://sepolia.etherscan.io/address/${address}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 mt-4 text-sm text-sky-600 hover:text-sky-700 font-semibold transition-colors"
-            >
-              View on Etherscan <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+        {/* Transaction History Section */}
+        <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden mt-8">
+          <div className="px-6 py-5 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-indigo-500" />
+              <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider">Transaction History</h2>
+            </div>
+            <span className="text-xs font-medium text-zinc-500">{contributions.length} total</span>
+          </div>
+
+          <div className="p-0 overflow-x-auto">
+            {loadingHistory ? (
+              <div className="flex flex-col items-center justify-center p-12 text-zinc-400">
+                <Loader2 className="w-8 h-8 animate-spin mb-4 text-indigo-500" />
+                <p className="text-sm">Loading transaction history...</p>
+              </div>
+            ) : contributions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-zinc-400 text-center">
+                <div className="w-16 h-16 bg-zinc-50 rounded-full flex items-center justify-center mb-4">
+                  <Activity className="w-8 h-8 text-zinc-300" />
+                </div>
+                <p className="text-sm font-medium text-zinc-600 mb-1">No contributions found</p>
+                <p className="text-xs text-zinc-500 max-w-xs">You haven't backed any campaigns yet. Explore the platform to find projects you love.</p>
+                <Link href="/explore" className="mt-4 px-4 py-2 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600 transition-colors">
+                  Explore Campaigns
+                </Link>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-zinc-50 text-zinc-500 text-xs uppercase tracking-wider font-semibold border-b border-zinc-100">
+                  <tr>
+                    <th className="px-6 py-4">Campaign</th>
+                    <th className="px-6 py-4">Amount</th>
+                    <th className="px-6 py-4">Date</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4 text-right">Transaction</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {contributions.map((tx, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <Link href={`/campaign/${tx.contract_address}`} className="font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                          {tx.title.length > 30 ? tx.title.substring(0, 30) + '...' : tx.title}
+                          <ArrowUpRight className="w-3 h-3" />
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-zinc-900">
+                        {Number(formatEther(BigInt(tx.amount_wei || '0'))).toFixed(4)} ETH
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500">
+                        {new Date(tx.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          tx.status === 'funded' || tx.status === 'settled' ? 'bg-emerald-100 text-emerald-800' :
+                          tx.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {tx.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <a 
+                          href={`https://sepolia.etherscan.io/tx/${tx.tx_hash}`} 
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-indigo-600 transition-colors"
+                        >
+                          <span className="font-mono">{tx.tx_hash.substring(0, 8)}...</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 

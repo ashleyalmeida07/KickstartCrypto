@@ -8,8 +8,13 @@ logger = logging.getLogger(__name__)
 
 async def fetch_platform_stats_async():
     try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        import asyncpg
+        from db.config import settings
+        
+        # CrewAI runs tools in separate threads. We CANNOT use the main thread's global pool.
+        # Create a fresh short-lived connection instead.
+        conn = await asyncpg.connect(settings.DATABASE_URL)
+        try:
             # Platform overall stats
             stats = await conn.fetchrow("SELECT total_raised_wei, active_campaigns, total_backers FROM platform_stats WHERE id = 1")
             
@@ -26,6 +31,8 @@ async def fetch_platform_stats_async():
                 "overall_stats": dict(stats) if stats else {},
                 "active_campaigns": [dict(c) for c in campaigns]
             }
+        finally:
+            await conn.close()
     except Exception as e:
         logger.error(f"Error fetching stats: {e}")
         return {"error": str(e)}
@@ -37,22 +44,5 @@ def fetch_platform_stats(query: str) -> str:
     total funds raised, number of active campaigns, total backers, and a list of
     the most recent active campaigns with their progress.
     """
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-    if loop.is_running():
-        # In a running async context (like FastAPI endpoint)
-        # We can't use asyncio.run. We can create a new thread or use run_coroutine_threadsafe.
-        # But wait, CrewAI runs in a separate thread usually. 
-        # To be safe, let's just create a new event loop for sync execution.
-        try:
-            return json.dumps(asyncio.run(fetch_platform_stats_async()), default=str)
-        except Exception:
-            import nest_asyncio
-            nest_asyncio.apply()
-            return json.dumps(asyncio.run(fetch_platform_stats_async()), default=str)
-    else:
-        return json.dumps(asyncio.run(fetch_platform_stats_async()), default=str)
+    # Just run it in a new event loop for this thread
+    return json.dumps(asyncio.run(fetch_platform_stats_async()), default=str)

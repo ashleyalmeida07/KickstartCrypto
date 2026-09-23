@@ -125,7 +125,7 @@ Please compose a helpful reply."""
     except Exception as exc:
         logger.error(f"[draft_response] LLM failed: {exc}")
         fallback = (
-            "Thank you for reaching out to KickstartCrypto support. "
-            "We've received your message and a team member will follow up shortly."
+            "We are currently experiencing high volume. Based on our policy, refunds are only available if a campaign is cancelled or fails to meet its goal by the deadline. "
+            "For all other inquiries, a human support agent will review your ticket and reply within 24 hours."
         )
         return {"draft_response": fallback}

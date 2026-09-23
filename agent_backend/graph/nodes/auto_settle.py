@@ -92,7 +92,7 @@ async def fetch_unsettled_campaigns(pool) -> list[dict]:
                 AND c.deadline < NOW()
                 AND NOT EXISTS (
                     SELECT 1 FROM milestones m 
-                    WHERE m.campaign_address = c.contract_address 
+                    WHERE m.campaign_id = c.id 
                     AND m.proof_status != 'verified'
                 )
             ORDER BY c.deadline ASC

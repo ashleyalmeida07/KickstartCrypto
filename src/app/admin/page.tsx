@@ -205,6 +205,8 @@ export default function AdminPage() {
     setGenerating(true);
     setReportMsg('');
     setAgentStep(0);
+    const initialReportCount = reports.length;
+    
     try {
       const res = await fetch(`${AGENT_URL}/admin/report/generate`, { method: 'POST' });
       if (res.ok) {
@@ -220,7 +222,25 @@ export default function AdminPage() {
         let tries = 0;
         const poll = setInterval(async () => {
           tries++;
-          await fetchReports();
+          
+          try {
+            const currentRes = await fetch(`${AGENT_URL}/admin/reports`);
+            if (currentRes.ok) {
+              const currentReports = await currentRes.json();
+              setReports(currentReports);
+              
+              // If we found a new report, stop polling early!
+              if (currentReports.length > initialReportCount) {
+                clearInterval(poll);
+                clearInterval(stepTimer);
+                setGenerating(false);
+                setAgentStep(-1);
+                setReportMsg('');
+                return;
+              }
+            }
+          } catch { /* ignore network errors during polling */ }
+
           if (tries >= 12) {
             clearInterval(poll);
             clearInterval(stepTimer);

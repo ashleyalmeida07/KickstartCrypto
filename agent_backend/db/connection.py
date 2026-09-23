@@ -25,7 +25,8 @@ async def get_pool() -> asyncpg.Pool:
             dsn=settings.DATABASE_URL,
             min_size=2,
             max_size=10,
-            command_timeout=30,
+            command_timeout=60,
+            timeout=60,
         )
     return _pool
 
