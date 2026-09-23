@@ -112,6 +112,8 @@ function SupportTab({
   const [response, setResponse]     = useState<string | null>(null);
   const [intent, setIntent]         = useState<string | null>(null);
 
+  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
+
   const submit = async () => {
     if (!message.trim() || !userAddress) {
       toast.error('Connect your wallet and enter a message first.');
@@ -119,7 +121,7 @@ function SupportTab({
     }
     setPollState('submitting');
     try {
-      const res = await fetch('http://localhost:8001/donor-support/query', {
+      const res = await fetch(`${AGENT_URL}/donor-support/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -138,7 +140,7 @@ function SupportTab({
       const MAX = 40;
       const poll = async () => {
         if (attempts++ > MAX) { setPollState('error'); return; }
-        const r = await fetch(`http://localhost:8001/donor-support/ticket/${data.ticket_id}`);
+        const r = await fetch(`${AGENT_URL}/donor-support/ticket/${data.ticket_id}`);
         if (!r.ok) { setPollState('error'); return; }
         const t = await r.json();
         setIntent(t.intent);

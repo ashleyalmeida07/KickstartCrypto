@@ -125,7 +125,15 @@ export default function AdminPage() {
   const [generating, setGenerating]       = useState(false);
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [reportMsg, setReportMsg]         = useState('');
-  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_URL ?? 'http://localhost:8001';
+  const [agentStep, setAgentStep]         = useState(-1);
+
+  const CREW_AGENTS = [
+    { icon: '🔍', name: 'Data Collector', desc: 'Fetching platform stats, campaign data & backer records…' },
+    { icon: '📊', name: 'Analytics Agent', desc: 'Calculating funding rates, growth metrics & anomalies…' },
+    { icon: '🤖', name: 'Risk Analyst',    desc: 'Cross-referencing campaign health & flagging risks…' },
+    { icon: '✍️',  name: 'Report Writer',  desc: 'Compiling findings into a structured AI report…' },
+  ];
+  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
 
   // ── Settlement engine state ──────────────────────────────────────────────────
   const [settleStatus, setSettleStatus]   = useState<any>(null);
@@ -196,22 +204,41 @@ export default function AdminPage() {
   const handleGenerateReport = async () => {
     setGenerating(true);
     setReportMsg('');
+    setAgentStep(0);
     try {
       const res = await fetch(`${AGENT_URL}/admin/report/generate`, { method: 'POST' });
       if (res.ok) {
-        setReportMsg('AI agents kicked off. This takes ~30s — refreshing automatically...');
-        // Poll every 8s for up to 90s
+        // Animate through agent steps every ~8s
+        let step = 0;
+        const stepTimer = setInterval(() => {
+          step++;
+          if (step < 4) setAgentStep(step);
+          else clearInterval(stepTimer);
+        }, 8000);
+
+        // Poll for completed report every 8s for up to 96s
         let tries = 0;
         const poll = setInterval(async () => {
           tries++;
           await fetchReports();
-          if (tries >= 12) { clearInterval(poll); setGenerating(false); setReportMsg(''); }
+          if (tries >= 12) {
+            clearInterval(poll);
+            clearInterval(stepTimer);
+            setGenerating(false);
+            setAgentStep(-1);
+            setReportMsg('');
+          }
         }, 8000);
       } else {
         setReportMsg('Failed to start report generation.');
         setGenerating(false);
+        setAgentStep(-1);
       }
-    } catch { setReportMsg('Agent backend offline.'); setGenerating(false); }
+    } catch {
+      setReportMsg('Agent backend offline.');
+      setGenerating(false);
+      setAgentStep(-1);
+    }
   };
 
 
@@ -554,11 +581,52 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {reportMsg && (
-          <div className="flex items-center gap-2 p-3 mb-4 bg-purple-50 border border-purple-200 text-purple-700 text-xs">
-            <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-            {reportMsg}
-          </div>
+        {generating && agentStep >= 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-5 border border-purple-200 bg-purple-50 rounded-xl p-4"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-500" />
+              <span className="text-sm font-semibold text-purple-800">CrewAI agents are working…</span>
+              <span className="ml-auto text-xs text-purple-400">~30s</span>
+            </div>
+            <div className="space-y-2">
+              {CREW_AGENTS.map((agent, i) => {
+                const isDone    = i < agentStep;
+                const isActive  = i === agentStep;
+                const isPending = i > agentStep;
+                return (
+                  <motion.div
+                    key={agent.name}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: isPending ? 0.35 : 1, x: 0 }}
+                    transition={{ delay: i * 0.08 }}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-all ${
+                      isActive  ? 'bg-white border-purple-300 shadow-sm' :
+                      isDone    ? 'bg-purple-100 border-purple-100' :
+                                  'bg-white/40 border-transparent'
+                    }`}
+                  >
+                    <span className="text-base">{agent.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-bold ${
+                          isActive ? 'text-purple-700' : isDone ? 'text-purple-500' : 'text-zinc-400'
+                        }`}>{agent.name}</span>
+                        {isDone   && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Done ✓</span>}
+                        {isActive && <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />Running</span>}
+                      </div>
+                      {(isActive || isDone) && (
+                        <p className="text-[11px] text-zinc-500 truncate mt-0.5">{agent.desc}</p>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
         )}
 
         {reportsLoading && reports.length === 0 && (
