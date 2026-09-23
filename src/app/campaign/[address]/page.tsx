@@ -1,13 +1,13 @@
 'use client';
 import { use } from 'react';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import {
   ExternalLink, Users, Clock, Shield, Share2,
   AlertCircle, CheckCircle, Loader2, RefreshCw,
-  XCircle, Zap, Settings,
+  XCircle, Zap, Settings, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatEther } from 'viem';
@@ -111,7 +111,24 @@ function SupportTab({
   const [response, setResponse] = useState<string | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
 
+  // Past tickets
+  const [pastTickets, setPastTickets]       = useState<any[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
+
   const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
+
+  const fetchPastTickets = useCallback(async () => {
+    if (!userAddress) return;
+    setLoadingTickets(true);
+    try {
+      const res = await fetch(`${AGENT_URL}/donor-support/my-tickets?donor_address=${userAddress}`);
+      if (res.ok) setPastTickets(await res.json());
+    } catch { /* backend offline */ }
+    finally { setLoadingTickets(false); }
+  }, [userAddress, AGENT_URL]);
+
+  useEffect(() => { fetchPastTickets(); }, [fetchPastTickets]);
 
   const submit = async () => {
     if (!message.trim() || !userAddress) {
@@ -146,9 +163,11 @@ function SupportTab({
         if (t.status === 'closed' || t.status === 'resolved') {
           setResponse(t.final_response || t.draft_response || 'No response generated.');
           setPollState('done');
+          fetchPastTickets();
         } else if (t.status === 'escalated') {
           setResponse(t.draft_response);
           setPollState('escalated');
+          fetchPastTickets();
         } else if (t.status === 'error') {
           setPollState('error');
         } else {
@@ -168,8 +187,20 @@ function SupportTab({
     general_question: 'General Question',
   };
 
+  const STATUS_STYLES: Record<string, string> = {
+    resolved:  'bg-emerald-50 text-emerald-700 border-emerald-200',
+    closed:    'bg-emerald-50 text-emerald-700 border-emerald-200',
+    escalated: 'bg-amber-50 text-amber-700 border-amber-200',
+    running:   'bg-sky-50 text-sky-700 border-sky-200',
+    open:      'bg-zinc-50 text-zinc-600 border-zinc-200',
+    error:     'bg-red-50 text-red-600 border-red-200',
+  };
+
+
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
+    <div className="space-y-5">
+      {/* ── Compose new ticket ── */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
       <h3 className="font-bold text-slate-900" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
         Contact Support
       </h3>
@@ -258,6 +289,76 @@ function SupportTab({
             <div className="font-semibold">Support unavailable</div>
             Agent backend is offline. Please try again later or email support@kickstartcrypto.app
           </div>
+        </div>
+      )}
+      </div>
+
+      {/* ── Past Tickets ── */}
+      {userAddress && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-900 text-sm" style={{ fontFamily: 'var(--font-space-grotesk)' }}>
+              Your Past Tickets
+            </h3>
+            <button onClick={fetchPastTickets} className="p-1.5 border border-zinc-200 hover:border-zinc-400 text-zinc-400 hover:text-zinc-700 rounded-lg transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {loadingTickets ? (
+            <div className="flex items-center gap-2 text-xs text-zinc-400 py-4">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading tickets...
+            </div>
+          ) : pastTickets.length === 0 ? (
+            <p className="text-xs text-zinc-400 text-center py-6">No support tickets yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {pastTickets.map((t) => (
+                <div key={t.id} className="border border-zinc-100 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setExpandedTicket(expandedTicket === t.id ? null : t.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-zinc-700 font-medium truncate">{t.message}</p>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">
+                        {new Date(t.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {t.intent && <span className="ml-2 text-zinc-500">{INTENT_LABELS[t.intent] ?? t.intent}</span>}
+                      </p>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${STATUS_STYLES[t.status] ?? STATUS_STYLES.open}`}>
+                      {t.status}
+                    </span>
+                    {expandedTicket === t.id
+                      ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                      : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+                  </button>
+
+                  {expandedTicket === t.id && (
+                    <div className="px-4 pb-4 pt-1 border-t border-zinc-100 space-y-2">
+                      {(t.final_response || t.draft_response) ? (
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <p className="text-[10px] font-semibold text-slate-500 mb-1">AI Response</p>
+                          <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                            {t.final_response || t.draft_response}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-zinc-400 italic">No response yet.</p>
+                      )}
+                      {t.escalation_reason && (
+                        <div className="bg-amber-50 rounded-lg p-3">
+                          <p className="text-[10px] font-semibold text-amber-600 mb-1">Escalation Reason</p>
+                          <p className="text-xs text-amber-800">{t.escalation_reason}</p>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-zinc-400 font-mono">ID: {t.id}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

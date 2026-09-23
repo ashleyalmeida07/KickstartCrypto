@@ -40,6 +40,7 @@ def _llm():
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=256,
+        request_timeout=15.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto DonorSupport",
@@ -51,6 +52,7 @@ def _llm():
         openai_api_base="https://integrate.api.nvidia.com/v1",
         temperature=0.0,
         max_tokens=256,
+        request_timeout=15.0,
     )
     return primary.with_fallbacks([fallback])
 

@@ -46,6 +46,7 @@ def _build_llm() -> ChatOpenAI:
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.0,
         max_tokens=512,
+        request_timeout=15.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto Campaign Vetting",
