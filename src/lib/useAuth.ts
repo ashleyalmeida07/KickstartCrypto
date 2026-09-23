@@ -19,9 +19,12 @@ export function useAuth() {
   const { connect } = useConnect();
   const idToken = session?.user?.idToken;
 
-  // Automatically connect the Web3Auth SFA wallet when a Google idToken is present
+  // Automatically connect the Web3Auth SFA wallet when a Google idToken is present.
+  // We only do this ONCE per browser session (sessionStorage guard) to avoid
+  // "token is used" errors caused by NextAuth caching the JWT for 30 days.
   useEffect(() => {
-    if (idToken && !address) {
+    const alreadyConnected = typeof window !== 'undefined' && sessionStorage.getItem('sfa_connected');
+    if (idToken && !address && !alreadyConnected) {
       import('./web3auth-sfa').then(({ connectSFA }) => {
         connectSFA(idToken).then((provider) => {
           if (provider) {
@@ -46,8 +49,13 @@ export function useAuth() {
                   })
                 });
 
-                if (typeof window !== 'undefined' && !sessionStorage.getItem('wallet_toast_shown')) {
-                  toast.success('✨ An inbuilt wallet has been created for you! You can add funds to it and start using the platform.', { duration: 6000 });
+                // Mark as connected so we don't re-run on page reload
+                if (typeof window !== 'undefined') {
+                  sessionStorage.setItem('sfa_connected', 'true');
+                }
+
+                if (!sessionStorage.getItem('wallet_toast_shown')) {
+                  toast.success('An inbuilt wallet has been created for you! You can add funds and start using the platform.', { duration: 6000 });
                   sessionStorage.setItem('wallet_toast_shown', 'true');
                 }
              });
@@ -134,6 +142,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('wallet_toast_shown');
+      sessionStorage.removeItem('sfa_connected');
     }
     await signOut({ redirect: false });
     disconnect();

@@ -32,12 +32,11 @@ function TxButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-        variant === 'primary' ? 'btn-primary'
+      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed ${variant === 'primary' ? 'btn-primary'
         : variant === 'danger'
           ? 'bg-red-50 border border-red-200 text-red-600 hover:bg-red-100'
           : 'btn-secondary'
-      }`}
+        }`}
     >
       {disabled && loadingLabel !== label ? <Loader2 className="w-4 h-4 animate-spin" /> : icon}
       {disabled ? loadingLabel : label}
@@ -53,10 +52,10 @@ function MilestoneRow({
   index: number;
 }) {
   const { data: milestoneRaw } = useReadContract({
-    address:      campaignAddress,
-    abi:          CAMPAIGN_ABI,
+    address: campaignAddress,
+    abi: CAMPAIGN_ABI,
     functionName: 'getMilestone',
-    args:         [BigInt(index)],
+    args: [BigInt(index)],
   });
 
   if (!milestoneRaw || !Array.isArray(milestoneRaw)) {
@@ -69,7 +68,7 @@ function MilestoneRow({
 
   const stateTag = released
     ? { label: 'Released', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700' }
-    : { label: 'Pending',  cls: 'bg-slate-100 border-slate-200 text-slate-500'      };
+    : { label: 'Pending', cls: 'bg-slate-100 border-slate-200 text-slate-500' };
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -106,11 +105,11 @@ function SupportTab({
   campaignAddress: string;
   userAddress: `0x${string}` | undefined;
 }) {
-  const [message, setMessage]       = useState('');
-  const [ticketId, setTicketId]     = useState<string | null>(null);
-  const [pollState, setPollState]   = useState<'idle' | 'submitting' | 'polling' | 'done' | 'escalated' | 'error'>('idle');
-  const [response, setResponse]     = useState<string | null>(null);
-  const [intent, setIntent]         = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const [ticketId, setTicketId] = useState<string | null>(null);
+  const [pollState, setPollState] = useState<'idle' | 'submitting' | 'polling' | 'done' | 'escalated' | 'error'>('idle');
+  const [response, setResponse] = useState<string | null>(null);
+  const [intent, setIntent] = useState<string | null>(null);
 
   const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
 
@@ -125,9 +124,9 @@ function SupportTab({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          donor_address:    userAddress,
+          donor_address: userAddress,
           campaign_address: campaignAddress,
-          message:          message.trim(),
+          message: message.trim(),
         }),
       });
       if (!res.ok) throw new Error(`Agent responded ${res.status}`);
@@ -163,10 +162,10 @@ function SupportTab({
   };
 
   const INTENT_LABELS: Record<string, string> = {
-    refund_request:   '💸 Refund Request',
-    status_inquiry:   '📊 Status Inquiry',
-    fraud_report:     '🚨 Fraud Report',
-    general_question: '❓ General Question',
+    refund_request: 'Refund Request',
+    status_inquiry: 'Status Inquiry',
+    fraud_report: 'Fraud Report',
+    general_question: 'General Question',
   };
 
   return (
@@ -272,18 +271,18 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
   const { address: userAddress, isConnected } = useAccount();
   const { campaign, isLoading } = useCampaign(addr);
 
-  const [activeTab,      setActiveTab]      = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [contributeOpen, setContributeOpen] = useState(false);
-  const [refreshKey,     setRefreshKey]     = useState(0);
-  const [txHash,         setTxHash]         = useState<`0x${string}` | undefined>(undefined);
-  const [actionPending,  setActionPending]  = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [actionPending, setActionPending] = useState(false);
 
   const refresh = () => setRefreshKey(k => k + 1);
 
   const { writeContract } = useWriteContract({
     mutation: {
       onSuccess: (h) => { setTxHash(h); setActionPending(true); toast.loading('Tx submitted!', { id: 'tx-toast' }); },
-      onError:   (e) => { setActionPending(false); toast.error(e.message.slice(0, 100)); },
+      onError: (e) => { setActionPending(false); toast.error(e.message.slice(0, 100)); },
     },
   });
   const { isSuccess: actionSuccess } = useWaitForTransactionReceipt({ hash: txHash, query: { enabled: !!txHash } });
@@ -293,26 +292,26 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
 
   // Read milestone count
   const { data: milestoneCount } = useReadContract({
-    address:      addr,
-    abi:          CAMPAIGN_ABI,
+    address: addr,
+    abi: CAMPAIGN_ABI,
     functionName: 'getMilestoneCount',
   });
 
   // Read user contribution — poll every 6s so it updates after a pending tx confirms
   const { data: myContribution } = useReadContract({
-    address:      addr,
-    abi:          CAMPAIGN_ABI,
+    address: addr,
+    abi: CAMPAIGN_ABI,
     functionName: 'contributions',
-    args:         userAddress ? [userAddress] : undefined,
-    query:        { enabled: !!userAddress, refetchInterval: 6_000 },
+    args: userAddress ? [userAddress] : undefined,
+    query: { enabled: !!userAddress, refetchInterval: 6_000 },
   });
 
-  const milestones    = Array.from({ length: Number(milestoneCount ?? 0) }, (_, i) => i);
-  const isCreator     = campaign && userAddress
+  const milestones = Array.from({ length: Number(milestoneCount ?? 0) }, (_, i) => i);
+  const isCreator = campaign && userAddress
     ? campaign.creator.toLowerCase() === userAddress.toLowerCase()
     : false;
-  const myContribEth  = myContribution ? Number(formatEther(myContribution as bigint)) : 0;
-  const isBacker      = myContribEth > 0;
+  const myContribEth = myContribution ? Number(formatEther(myContribution as bigint)) : 0;
+  const isBacker = myContribEth > 0;
   const canClaimRefund =
     isBacker &&
     campaign &&
@@ -338,11 +337,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
   }
 
   const STATUS_STYLES: Record<string, string> = {
-    Active:    'bg-zinc-900 border-zinc-900 text-white',
-    Funded:    'bg-zinc-100 border-zinc-200 text-zinc-900',
-    Settled:   'bg-zinc-100 border-zinc-200 text-zinc-900',
-    Failed:    'bg-white border-zinc-200 text-zinc-500',
-    Ended:     'bg-zinc-100 border-zinc-200 text-zinc-500',
+    Active: 'bg-zinc-900 border-zinc-900 text-white',
+    Funded: 'bg-zinc-100 border-zinc-200 text-zinc-900',
+    Settled: 'bg-zinc-100 border-zinc-200 text-zinc-900',
+    Failed: 'bg-white border-zinc-200 text-zinc-500',
+    Ended: 'bg-zinc-100 border-zinc-200 text-zinc-500',
     Cancelled: 'bg-white border-zinc-200 text-zinc-500',
   };
 
@@ -435,17 +434,16 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
             {/* Tabs */}
             <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
               {([
-                { id: 'overview'   as Tab, label: 'Overview'   },
+                { id: 'overview' as Tab, label: 'Overview' },
                 { id: 'milestones' as Tab, label: `Milestones (${milestones.length})` },
-                { id: 'refund'     as Tab, label: 'Refunds'    },
-                { id: 'support'    as Tab, label: '💬 Support'  },
+                { id: 'refund' as Tab, label: 'Refunds' },
+                { id: 'support' as Tab, label: 'Support' },
               ]).map(({ id, label }) => (
                 <button key={id} onClick={() => setActiveTab(id)}
-                  className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap -mb-px ${
-                    activeTab === id
-                      ? 'border-sky-500 text-sky-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`px-5 py-3 text-sm font-semibold border-b-2 transition-all whitespace-nowrap -mb-px ${activeTab === id
+                    ? 'border-sky-500 text-sky-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                    }`}
                   style={{ fontFamily: 'var(--font-space-grotesk)' }}>
                   {label}
                 </button>
@@ -481,8 +479,8 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                       </p>
                       <p className="text-xs text-sky-600 mt-0.5">
                         {campaign.status === 'Active' ? 'Campaign is active — thank you for backing!' :
-                         campaign.status === 'Funded' ? 'Goal reached! Milestone payouts begin.' :
-                         canClaimRefund ? 'You can claim your refund below.' : ''}
+                          campaign.status === 'Funded' ? 'Goal reached! Milestone payouts begin.' :
+                            canClaimRefund ? 'You can claim your refund below.' : ''}
                       </p>
                     </div>
                   )}
@@ -646,18 +644,17 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ addre
                   </button>
                 ) : canClaimRefund ? (
                   <button onClick={() => {
-                      setActiveTab('refund');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
+                    setActiveTab('refund');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
                     className="w-full py-3.5 rounded-xl text-center text-base font-semibold bg-zinc-900 hover:bg-zinc-800 text-white shadow-sm transition-all flex items-center justify-center gap-2">
                     <RefreshCw className="w-5 h-5" /> Claim Your Refund
                   </button>
                 ) : (
-                  <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${
-                    campaign.goalReached
-                      ? 'bg-zinc-100 border border-zinc-200 text-zinc-900'
-                      : STATUS_STYLES[campaign.status] ?? 'bg-slate-100 text-slate-500'
-                  }`}>
+                  <div className={`w-full py-3 rounded-xl text-center text-sm font-semibold ${campaign.goalReached
+                    ? 'bg-zinc-100 border border-zinc-200 text-zinc-900'
+                    : STATUS_STYLES[campaign.status] ?? 'bg-slate-100 text-slate-500'
+                    }`}>
                     {campaign.goalReached ? '✓ Goal Reached — Awaiting Settlement' : `Campaign ${campaign.status}`}
                   </div>
                 )}

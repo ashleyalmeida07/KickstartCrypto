@@ -504,6 +504,26 @@ async def donor_support_query(
     )
 
 
+@app.get("/donor-support/my-tickets")
+async def get_my_tickets(donor_address: str, limit: int = 20):
+    """Fetch all past support tickets for a given donor address."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id::text, status, intent, message, draft_response, final_response,
+                   escalation_reason, created_at, resolved_at
+            FROM support_tickets
+            WHERE LOWER(donor_address) = LOWER($1)
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            donor_address,
+            limit,
+        )
+    return [dict(r) for r in rows]
+
+
 @app.get("/donor-support/ticket/{ticket_id}", response_model=TicketStatusResponse)
 async def get_support_ticket(ticket_id: str):
     """Poll the status and response for a support ticket."""

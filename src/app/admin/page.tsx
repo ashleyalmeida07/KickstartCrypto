@@ -12,7 +12,7 @@ import {
   Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
   Users, TrendingUp, Activity, Lock, BarChart3, Wallet,
   Target, Calendar, ArrowUpRight, BrainCircuit, Sparkles, FileText,
-  Zap, CircleDot, CheckCircle, XCircle,
+  Zap, CircleDot, CheckCircle, XCircle, Database, BarChart2, Bot, PenLine,
 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { MilestoneProofQueue } from '@/components/ui/MilestoneProofQueue';
@@ -128,10 +128,10 @@ export default function AdminPage() {
   const [agentStep, setAgentStep]         = useState(-1);
 
   const CREW_AGENTS = [
-    { icon: '🔍', name: 'Data Collector', desc: 'Fetching platform stats, campaign data & backer records…' },
-    { icon: '📊', name: 'Analytics Agent', desc: 'Calculating funding rates, growth metrics & anomalies…' },
-    { icon: '🤖', name: 'Risk Analyst',    desc: 'Cross-referencing campaign health & flagging risks…' },
-    { icon: '✍️',  name: 'Report Writer',  desc: 'Compiling findings into a structured AI report…' },
+    { Icon: Database,  name: 'Data Collector', desc: 'Fetching platform stats, campaign data & backer records...' },
+    { Icon: BarChart2, name: 'Analytics Agent', desc: 'Calculating funding rates, growth metrics & anomalies...' },
+    { Icon: Bot,       name: 'Risk Analyst',    desc: 'Cross-referencing campaign health & flagging risks...' },
+    { Icon: PenLine,   name: 'Report Writer',  desc: 'Compiling findings into a structured AI report...' },
   ];
   const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
 
@@ -609,13 +609,15 @@ export default function AdminPage() {
                                   'bg-white/40 border-transparent'
                     }`}
                   >
-                    <span className="text-base">{agent.icon}</span>
+                    <div className={`w-6 h-6 flex items-center justify-center shrink-0 ${isActive ? 'text-purple-500' : isDone ? 'text-purple-400' : 'text-zinc-300'}`}>
+                      <agent.Icon className="w-4 h-4" />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className={`text-xs font-bold ${
                           isActive ? 'text-purple-700' : isDone ? 'text-purple-500' : 'text-zinc-400'
                         }`}>{agent.name}</span>
-                        {isDone   && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Done ✓</span>}
+                        {isDone   && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">Done</span>}
                         {isActive && <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 border border-purple-200 px-1.5 py-0.5 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />Running</span>}
                       </div>
                       {(isActive || isDone) && (
