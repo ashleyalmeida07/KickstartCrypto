@@ -20,8 +20,8 @@ def get_tasks():
     )
 
     report_task = Task(
-        description='Take the data summary and the strategic analysis, and compile them into a beautifully formatted Markdown report. Use headers, bullet points, and bold text for emphasis. The report MUST include a "Platform Overview" section and a "Strategic Recommendations" section.',
-        expected_output='A professional Markdown-formatted string representing the final Admin Report.',
+        description='Take the data summary and the strategic analysis, and compile them into a beautifully formatted Markdown report. Use headers, bullet points, and bold text for emphasis. The report MUST include a "Platform Overview" section and a "Strategic Recommendations" section.\n\nCRITICAL INSTRUCTION: You must output ONLY the final raw markdown report. Do NOT include any conversational filler, preamble, postamble, or internal thinking (e.g., do not say "Here is the report" or "I will now output..."). Start immediately with the markdown title # Executive Platform Performance Report.',
+        expected_output='A professional Markdown-formatted string representing the final Admin Report, with NO surrounding text, NO conversational filler, and NO internal thought process.',
         agent=admin,
         context=[fetch_data_task, strategy_task]
     )
