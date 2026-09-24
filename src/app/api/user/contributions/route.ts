@@ -47,7 +47,43 @@ export async function GET(req: NextRequest) {
       [address.toLowerCase()],
     );
 
-    return NextResponse.json({ contributions: rows });
+    // Fetch payouts (settled campaigns) for the creator
+    const payouts = await query<{
+      tx_hash:          string;
+      amount_wei:       string;
+      created_at:       string;
+      campaign_id:      string;
+      contract_address: string;
+      title:            string;
+      category:         string;
+      image_cid:        string;
+      status:           string;
+      goal_wei:         string;
+      total_contributed_wei: string;
+      deadline:         string;
+      is_payout:        boolean;
+    }>(
+      `SELECT
+         cam.deploy_tx_hash AS tx_hash,
+         (cam.total_contributed_wei - (cam.total_contributed_wei * cam.platform_fee_bps / 10000)) AS amount_wei,
+         cam.updated_at AS created_at,
+         cam.id AS campaign_id,
+         cam.contract_address,
+         cam.title,
+         cam.category,
+         cam.image_cid,
+         cam.status,
+         cam.goal_wei,
+         cam.total_contributed_wei,
+         cam.deadline,
+         true as is_payout
+       FROM campaigns cam
+       WHERE cam.creator_address = $1 AND cam.status = 'settled'
+       ORDER BY cam.updated_at DESC`,
+      [address.toLowerCase()]
+    );
+
+    return NextResponse.json({ contributions: rows, payouts });
   } catch (err) {
     console.error('[GET /api/user/contributions]', err);
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

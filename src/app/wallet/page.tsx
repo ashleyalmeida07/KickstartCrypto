@@ -24,7 +24,11 @@ export default function WalletDashboard() {
       fetch(`/api/user/contributions?address=${address}`)
         .then(r => r.json())
         .then(data => {
-          if (data.contributions) setContributions(data.contributions);
+          let merged = [];
+          if (data.contributions) merged = [...merged, ...data.contributions];
+          if (data.payouts) merged = [...merged, ...data.payouts];
+          merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          setContributions(merged);
         })
         .finally(() => setLoadingHistory(false));
     }
@@ -177,11 +181,12 @@ export default function WalletDashboard() {
                       <td className="px-6 py-4">
                         <Link href={`/campaign/${tx.contract_address}`} className="font-medium text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
                           {tx.title.length > 30 ? tx.title.substring(0, 30) + '...' : tx.title}
-                          <ArrowUpRight className="w-3 h-3" />
+                          {tx.is_payout && <span className="ml-2 bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">Payout Received</span>}
+                          {!tx.is_payout && <ArrowUpRight className="w-3 h-3" />}
                         </Link>
                       </td>
                       <td className="px-6 py-4 font-semibold text-zinc-900">
-                        {Number(formatEther(BigInt(tx.amount_wei || '0'))).toFixed(4)} ETH
+                        {tx.is_payout ? '+' : '-'}{Number(formatEther(BigInt((tx.amount_wei?.toString() || '0').split('.')[0]))).toLocaleString(undefined, { maximumFractionDigits: 8 })} ETH
                       </td>
                       <td className="px-6 py-4 text-zinc-500">
                         {new Date(tx.created_at).toLocaleDateString()}

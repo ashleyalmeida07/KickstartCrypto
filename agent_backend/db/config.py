@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Groq (fast inference for real-time flows)
     GROQ_API_KEY: str = ""
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
 
     # Etherscan
     ETHERSCAN_API_KEY: str = ""

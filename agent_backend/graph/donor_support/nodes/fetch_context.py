@@ -32,9 +32,9 @@ async def fetch_transaction_context(state: SupportState) -> dict:
             if campaign:
                 row = await conn.fetchrow(
                     """
-                    SELECT amount_eth, created_at
+                    SELECT amount_wei, created_at
                     FROM contributions
-                    WHERE LOWER(donor_address) = $1
+                    WHERE LOWER(backer_address) = $1
                       AND LOWER(campaign_address) = $2
                     ORDER BY created_at DESC LIMIT 1
                     """,
@@ -44,9 +44,9 @@ async def fetch_transaction_context(state: SupportState) -> dict:
                 # No specific campaign — get most recent contribution overall
                 row = await conn.fetchrow(
                     """
-                    SELECT amount_eth, campaign_address, created_at
+                    SELECT amount_wei, campaign_address, created_at
                     FROM contributions
-                    WHERE LOWER(donor_address) = $1
+                    WHERE LOWER(backer_address) = $1
                     ORDER BY created_at DESC LIMIT 1
                     """,
                     donor,
@@ -56,7 +56,8 @@ async def fetch_transaction_context(state: SupportState) -> dict:
                     result["campaign_address"] = campaign
 
             if row:
-                result["tx_amount_eth"]  = float(row["amount_eth"])
+                amount_wei = float(row["amount_wei"])
+                result["tx_amount_eth"]  = amount_wei / 1e18
                 result["tx_timestamp"]   = str(row["created_at"])
 
             # ── Campaign record ──────────────────────────────────────────────

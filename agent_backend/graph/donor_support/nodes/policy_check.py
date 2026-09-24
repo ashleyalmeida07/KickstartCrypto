@@ -53,8 +53,8 @@ async def policy_check(state: SupportState) -> dict:
             eligible = False
 
         # Rule 3: Did they contribute enough to matter?
-        if state.tx_amount_eth and state.tx_amount_eth < 0.0001:
-            notes.append("Contribution amount is below minimum refund threshold (0.0001 ETH).")
+        if state.tx_amount_eth and state.tx_amount_eth < 0.0000001:
+            notes.append("Contribution amount is below minimum refund threshold (0.0000001 ETH).")
             eligible = False
 
     logger.info(f"[policy_check] eligible={eligible} notes={notes}")

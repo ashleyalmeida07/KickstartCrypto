@@ -940,17 +940,7 @@ export default function CreatePage() {
                       </button>
                     )}
 
-                    {/* Dev Mode Force Launch */}
-                    {preVetResult && !preVetResult.can_deploy && (
-                      <button
-                        onClick={handleDeploy}
-                        disabled={deploying || !isConnected}
-                        className="w-full py-2 text-xs font-semibold text-zinc-500 bg-zinc-50 hover:bg-zinc-100 transition-colors border border-dashed border-zinc-300 flex items-center justify-center gap-2 mt-2"
-                      >
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        Force Launch (Just for Development)
-                      </button>
-                    )}
+                
 
                     <p className="text-xs text-center text-zinc-400 mt-4">
                       Calls <code className="bg-zinc-100 px-1.5 py-0.5 text-zinc-600">CampaignFactory.createCampaign()</code> on Sepolia Testnet

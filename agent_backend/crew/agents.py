@@ -1,12 +1,18 @@
-from crewai import Agent
+from crewai import Agent, LLM
 from langchain_openai import ChatOpenAI
 from db.config import settings
 from .tools import fetch_platform_stats
 
 def _get_llm():
-    # CrewAI uses LiteLLM — prefix "groq/" routes via the GROQ_API_KEY env var.
-    # This is fast even for the admin report (background task).
-    return f"groq/{settings.GROQ_MODEL}"
+    # CrewAI strips the first prefix if it matches a provider like "openai/".
+    # Since our Groq model name is "openai/gpt-oss-120b", we prefix it with "openai/" 
+    # so CrewAI passes the correct string downstream to the OpenAI wrapper.
+    return LLM(
+        model=f"openai/{settings.GROQ_MODEL}",
+        base_url=settings.GROQ_BASE_URL,
+        api_key=settings.GROQ_API_KEY,
+        temperature=0.3
+    )
 
 def create_data_analyst():
     return Agent(
