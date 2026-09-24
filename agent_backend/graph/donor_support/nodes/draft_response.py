@@ -39,38 +39,26 @@ RULES:
 
 def _llm():
     primary = ChatOpenAI(
+        model=settings.GROQ_MODEL,
+        openai_api_key=settings.GROQ_API_KEY,
+        openai_api_base=settings.GROQ_BASE_URL,
+        temperature=0.3,
+        max_tokens=512,
+        request_timeout=30.0,
+    )
+    fallback = ChatOpenAI(
         model=settings.OPENROUTER_MODEL,
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
         temperature=0.3,
         max_tokens=512,
-        request_timeout=15.0,
+        request_timeout=60.0,
         default_headers={
             "HTTP-Referer": "https://kickstart-crypto.app",
             "X-Title": "KickstartCrypto DonorSupport",
         },
     )
-    fallback_1 = ChatOpenAI(
-        model=settings.OPENROUTER_MODEL,
-        openai_api_key=settings.OPENROUTER_API_KEY_2,
-        openai_api_base=settings.OPENROUTER_BASE_URL,
-        temperature=0.3,
-        max_tokens=512,
-        request_timeout=15.0,
-        default_headers={
-            "HTTP-Referer": "https://kickstart-crypto.app",
-            "X-Title": "KickstartCrypto DonorSupport",
-        },
-    )
-    fallback_2 = ChatOpenAI(
-        model="nvidia/llama-3.1-nemotron-70b-instruct",
-        openai_api_key=settings.NVIDIA_API_KEY,
-        openai_api_base="https://integrate.api.nvidia.com/v1",
-        temperature=0.3,
-        max_tokens=512,
-        request_timeout=15.0,
-    )
-    return primary.with_fallbacks([fallback_1, fallback_2])
+    return primary.with_fallbacks([fallback])
 
 
 async def draft_response(state: SupportState) -> dict:
@@ -124,8 +112,6 @@ Please compose a helpful reply."""
 
     except Exception as exc:
         logger.error(f"[draft_response] LLM failed: {exc}")
-        fallback = (
-            "We are currently experiencing high volume. Based on our policy, refunds are only available if a campaign is cancelled or fails to meet its goal by the deadline. "
-            "For all other inquiries, a human support agent will review your ticket and reply within 24 hours."
-        )
-        return {"draft_response": fallback}
+        # Return empty so escalation_gate routes to human review instead of
+        # sending a generic canned message as if it were a real AI response.
+        return {"draft_response": ""}

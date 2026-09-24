@@ -39,8 +39,16 @@ Respond ONLY with a valid JSON object in this exact format (no markdown, no expl
 
 
 def _build_llm() -> ChatOpenAI:
-    """Build an OpenRouter-backed LLM client."""
+    """Groq-backed LLM client with OpenRouter fallback."""
     primary = ChatOpenAI(
+        model=settings.GROQ_MODEL,
+        openai_api_key=settings.GROQ_API_KEY,
+        openai_api_base=settings.GROQ_BASE_URL,
+        temperature=0.0,
+        max_tokens=512,
+        request_timeout=30.0,
+    )
+    fallback = ChatOpenAI(
         model=settings.OPENROUTER_MODEL,
         openai_api_key=settings.OPENROUTER_API_KEY,
         openai_api_base=settings.OPENROUTER_BASE_URL,
@@ -52,27 +60,7 @@ def _build_llm() -> ChatOpenAI:
             "X-Title": "KickstartCrypto Campaign Vetting",
         },
     )
-    fallback_1 = ChatOpenAI(
-        model=settings.OPENROUTER_MODEL,
-        openai_api_key=settings.OPENROUTER_API_KEY_2,
-        openai_api_base=settings.OPENROUTER_BASE_URL,
-        temperature=0.0,
-        max_tokens=512,
-        request_timeout=60.0,
-        default_headers={
-            "HTTP-Referer": "https://kickstart-crypto.app",
-            "X-Title": "KickstartCrypto Campaign Vetting",
-        },
-    )
-    fallback_2 = ChatOpenAI(
-        model="nvidia/llama-3.1-nemotron-70b-instruct",
-        openai_api_key=settings.NVIDIA_API_KEY,
-        openai_api_base="https://integrate.api.nvidia.com/v1",
-        temperature=0.0,
-        max_tokens=512,
-        request_timeout=60.0,
-    )
-    return primary.with_fallbacks([fallback_1, fallback_2])
+    return primary.with_fallbacks([fallback])
 
 
 async def content_authenticity_check(state: VettingState) -> dict:

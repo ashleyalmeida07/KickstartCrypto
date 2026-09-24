@@ -88,6 +88,11 @@ _last_sweep_result: dict = {"status": "not_run_yet"}
 async def lifespan(app: FastAPI):
     """Startup: warm up DB pool, create tables, re-queue stuck campaigns."""
     logger.info("🚀 Agent backend starting up…")
+
+    # Expose Groq key to LiteLLM (used by CrewAI's groq/ provider prefix)
+    if settings.GROQ_API_KEY:
+        os.environ["GROQ_API_KEY"] = settings.GROQ_API_KEY
+
     pool = await get_pool()
     logger.info("✅ DB pool ready.")
 

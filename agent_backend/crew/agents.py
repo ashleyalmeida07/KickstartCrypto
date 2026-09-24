@@ -4,12 +4,9 @@ from db.config import settings
 from .tools import fetch_platform_stats
 
 def _get_llm():
-    # CrewAI report generation is a background task — use the heavier reasoning
-    # model here for quality. Real-time flows use settings.OPENROUTER_MODEL (fast).
-    model_name = settings.OPENROUTER_MODEL_HEAVY
-    if not model_name.startswith("openrouter/"):
-        return f"openrouter/{model_name}"
-    return model_name
+    # CrewAI uses LiteLLM — prefix "groq/" routes via the GROQ_API_KEY env var.
+    # This is fast even for the admin report (background task).
+    return f"groq/{settings.GROQ_MODEL}"
 
 def create_data_analyst():
     return Agent(

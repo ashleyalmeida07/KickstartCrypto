@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # NVIDIA API (Fallback)
     NVIDIA_API_KEY: str = ""
 
+    # Groq (fast inference for real-time flows)
+    GROQ_API_KEY: str = ""
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
     # Etherscan
     ETHERSCAN_API_KEY: str = ""
     ETHERSCAN_BASE_URL: str = "https://api-sepolia.etherscan.io/api"
