@@ -53,11 +53,13 @@ export function useAuth() {
              });
           }
         }).catch(err => {
-          console.error("Web3Auth SFA connection failed:", err);
+          // "token is used" / "Duplicate token" just means the wallet was already
+          // initialized from this Google JWT in a prior page load — the NextAuth
+          // session is still perfectly valid, so we do nothing.
           if (err.message?.includes('token is used') || err.message?.includes('Duplicate token')) {
-            toast.error('Session expired. Please log in again.');
-            signOut({ redirect: false });
+            return; // silent — user is already logged in
           }
+          console.error("Web3Auth SFA connection failed:", err);
         });
       });
     }
