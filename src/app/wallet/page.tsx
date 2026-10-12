@@ -24,10 +24,10 @@ export default function WalletDashboard() {
       fetch(`/api/user/contributions?address=${address}`)
         .then(r => r.json())
         .then(data => {
-          let merged = [];
+          let merged: any[] = [];
           if (data.contributions) merged = [...merged, ...data.contributions];
           if (data.payouts) merged = [...merged, ...data.payouts];
-          merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          merged.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
           setContributions(merged);
         })
         .finally(() => setLoadingHistory(false));
