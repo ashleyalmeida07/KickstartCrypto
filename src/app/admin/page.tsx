@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { formatEther } from 'viem';
 import { MilestoneProofQueue } from '@/components/ui/MilestoneProofQueue';
+import { AGENT_URL } from '@/lib/agent';
 
 interface AdminCampaign {
   id:                    string;
@@ -134,7 +135,6 @@ export default function AdminPage() {
     { Icon: Bot,       name: 'Risk Analyst',    desc: 'Cross-referencing campaign health & flagging risks...' },
     { Icon: PenLine,   name: 'Report Writer',  desc: 'Compiling findings into a structured AI report...' },
   ];
-  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
 
   // ── Settlement engine state ──────────────────────────────────────────────────
   const [settleStatus, setSettleStatus]   = useState<any>(null);

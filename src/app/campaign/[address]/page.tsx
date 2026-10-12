@@ -17,6 +17,7 @@ import { CAMPAIGN_ABI } from '@/lib/contracts';
 import { ContributeModal } from '@/components/ui/ContributeModal';
 import { TxHashBadge } from '@/components/ui/TxHashBadge';
 import { formatEthSmart } from '@/lib/utils';
+import { AGENT_URL } from '@/lib/agent';
 
 type Tab = 'overview' | 'milestones' | 'refund' | 'support';
 const PIE_COLORS = ['#0EA5E9', '#7C3AED', '#EC4899', '#10B981', '#F59E0B'];
@@ -116,8 +117,6 @@ function SupportTab({
   const [pastTickets, setPastTickets]       = useState<any[]>([]);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [expandedTicket, setExpandedTicket] = useState<string | null>(null);
-
-  const AGENT_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ?? 'http://localhost:8001';
 
   const fetchPastTickets = useCallback(async () => {
     if (!userAddress) return;

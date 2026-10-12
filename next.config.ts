@@ -29,6 +29,22 @@ const nextConfig: NextConfig = {
     };
     return config;
   },
+
+  // ── Reverse Proxy for Agent Backend (Avoids Mixed Content on HTTPS) ───────
+  async rewrites() {
+    const backendUrl = (
+      process.env.AGENT_BACKEND_URL ||
+      process.env.NEXT_PUBLIC_AGENT_BACKEND_URL ||
+      'http://localhost:8001'
+    ).replace(/\/$/, '');
+
+    return [
+      {
+        source: '/api/agent/:path*',
+        destination: `${backendUrl}/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
