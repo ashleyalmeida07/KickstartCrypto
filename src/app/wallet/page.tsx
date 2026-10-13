@@ -2,6 +2,7 @@
 
 import { useAccount, useBalance, useDisconnect } from 'wagmi';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/useAuth';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, ExternalLink, ArrowDownToLine, Activity, History, Loader2, ArrowUpRight } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,11 +10,27 @@ import { formatEther } from 'viem';
 import Link from 'next/link';
 
 export default function WalletDashboard() {
+  // useAuth() triggers the Web3Auth SFA auto-connect effect for Google users
+  // Without this, the embedded wallet is never initialized on this page
+  useAuth();
+
   const { address, isConnected, connector } = useAccount();
   const { data: balance, isLoading } = useBalance({ address });
   const { disconnect } = useDisconnect();
 
   const [mounted, setMounted] = useState(false);
+  const [connecting, setConnecting] = useState(true);
+
+  // Give Web3Auth up to 5s to auto-connect before showing "Not Connected"
+  useEffect(() => {
+    const timer = setTimeout(() => setConnecting(false), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Once address is available, stop the connecting spinner
+  useEffect(() => {
+    if (isConnected) setConnecting(false);
+  }, [isConnected]);
   const [contributions, setContributions] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -37,12 +54,24 @@ export default function WalletDashboard() {
   if (!mounted) return null;
 
   if (!isConnected) {
+    // Still waiting for Web3Auth auto-connect
+    if (connecting) {
+      return (
+        <div className="min-h-[80vh] flex items-center justify-center bg-zinc-50">
+          <div className="text-center p-8 max-w-md w-full bg-white border border-zinc-200 shadow-sm rounded-xl">
+            <Loader2 className="w-10 h-10 text-zinc-400 mx-auto mb-4 animate-spin" />
+            <h2 className="text-xl font-bold mb-2">Connecting Wallet…</h2>
+            <p className="text-zinc-500">Setting up your embedded wallet, please wait.</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-[80vh] flex items-center justify-center bg-zinc-50">
         <div className="text-center p-8 max-w-md w-full bg-white border border-zinc-200 shadow-sm rounded-xl">
           <Activity className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-          <h2 className="text-xl font-bold mb-2">Not Connected</h2>
-          <p className="text-zinc-500 mb-6">Please connect your embedded wallet to view your dashboard.</p>
+          <h2 className="text-xl font-bold mb-2">Wallet Not Connected</h2>
+          <p className="text-zinc-500 mb-6">Your embedded wallet could not be initialized. Try signing out and signing back in with Google.</p>
         </div>
       </div>
     );
