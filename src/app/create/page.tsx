@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react';
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { parseEther } from 'viem';
 import { sepolia } from 'viem/chains';
 import { useRouter } from 'next/navigation';
@@ -21,6 +22,8 @@ import { CATEGORIES } from '@/lib/data';
 import { TxHashBadge } from '@/components/ui/TxHashBadge';
 import { uploadCampaignImage } from '@/lib/utils';
 import { useDeployment } from '@/context/DeploymentContext';
+import { AGENT_URL } from '@/lib/agent';
+import { useAuth } from '@/lib/useAuth';
 
 const STEPS = ['Basic Info', 'Funding', 'Milestones', 'AI Risk Check', 'Review & Deploy'];
 
@@ -48,6 +51,8 @@ export default function CreatePage() {
   const { address, isConnected, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
   const { data: session } = useSession();
+  const { openConnectModal } = useConnectModal();
+  useAuth(); // ensure Web3Auth auto-connects for Google sessions if needed
 
   const [step, setStep]   = useState(0);
   const [form, setForm]   = useState<FormData>(DEFAULT_FORM);
@@ -116,17 +121,26 @@ export default function CreatePage() {
 
   /* ── Pre-vet runner with per-node live state ── */
   const runPreVet = useCallback(async () => {
-    if (!address || !isStep0Valid || !isStep1Valid) return;
+    if (!isStep0Valid || !isStep1Valid) return;
     setPreVetState('running');
     setPreVetResult(null);
     setPreVetError('');
-    setNodeStates({ wallet: 'running', content: 'idle', score: 'idle' });
-    try {
-      // Simulate staggered node progression for live UX
-      const walletTimer = setTimeout(() => setNodeState('content', 'running'), 2000);
-      const contentTimer = setTimeout(() => setNodeState('score', 'running'), 5000);
+    setNodeStates({
+      wallet: address ? 'running' : 'done',
+      content: 'running',
+      score: 'idle',
+    });
 
-      const res = await fetch('http://localhost:8001/pre-vet', {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      // Simulate staggered progression for score node
+      const scoreTimer = setTimeout(() => setNodeState('score', 'running'), 3500);
+
+      const creatorAddress = address || '0x0000000000000000000000000000000000000000';
+
+      const res = await fetch(`${AGENT_URL}/pre-vet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,11 +148,13 @@ export default function CreatePage() {
           description:     form.shortDescription,
           goal_eth:        parseFloat(form.goalEth) || 0,
           category:        form.category,
-          creator_address: address,
+          creator_address: creatorAddress,
         }),
+        signal: controller.signal,
       });
-      clearTimeout(walletTimer);
-      clearTimeout(contentTimer);
+
+      clearTimeout(timeoutId);
+      clearTimeout(scoreTimer);
 
       if (!res.ok) throw new Error(`Agent responded ${res.status}`);
       const data: PreVetResult = await res.json();
@@ -146,8 +162,12 @@ export default function CreatePage() {
       setPreVetResult(data);
       setPreVetState('done');
     } catch (e) {
+      clearTimeout(timeoutId);
       setNodeStates({ wallet: 'done', content: 'done', score: 'done' });
-      setPreVetError((e as Error).message);
+      const errMsg = (e as Error).name === 'AbortError'
+        ? 'Risk check timed out. Agent backend may be sleeping or unreachable.'
+        : (e as Error).message;
+      setPreVetError(errMsg);
       setPreVetState('error');
     }
   }, [address, form.title, form.shortDescription, form.goalEth, form.category, isStep0Valid, isStep1Valid]);
@@ -496,7 +516,9 @@ export default function CreatePage() {
                 icon: Wallet,
                 label: 'Node 1 — Wallet History Check',
                 method: { label: 'Etherscan API', color: 'bg-zinc-100 border-zinc-200 text-zinc-900' },
-                desc: `Querying Etherscan Sepolia for ${address ? `${address.slice(0,6)}…${address.slice(-4)}` : 'your wallet'}`,
+                desc: address 
+                  ? `Querying Etherscan Sepolia for ${address.slice(0,6)}…${address.slice(-4)}`
+                  : 'Wallet not connected (reputation check skipped)',
                 inputs: [
                   { label: 'Wallet Address', value: address ?? 'Not connected',           type: 'Address' },
                   { label: 'Network',         value: 'Sepolia Testnet',                    type: 'Config'  },
@@ -504,12 +526,17 @@ export default function CreatePage() {
                   { label: 'Checks',          value: 'Age · Tx count · Known fraud lists', type: 'Logic'  },
                   { label: 'Blocklist DB',    value: 'Internal flagged-address registry',  type: 'DB'     },
                 ],
-                outputs: nodeStates.wallet === 'done' && preVetResult ? [
-                  { label: 'Wallet Age',   value: preVetResult.wallet_age_days  !== null ? `${preVetResult.wallet_age_days} days`         : '—', good: (preVetResult.wallet_age_days  ?? 0) > 30  },
-                  { label: 'Tx Count',     value: preVetResult.wallet_tx_count  !== null ? `${preVetResult.wallet_tx_count} transactions`  : '—', good: (preVetResult.wallet_tx_count  ?? 0) > 5   },
-                  { label: 'Blocklist',    value: preVetResult.wallet_on_blocklist === true ? 'Flagged' : 'Clean',                               good: !preVetResult.wallet_on_blocklist            },
-                  { label: 'Wallet Score', value: preVetResult.wallet_score  !== null ? `${Math.round((preVetResult.wallet_score  ?? 0) * 100)}%` : '—', good: (preVetResult.wallet_score  ?? 0) > 0.5 },
-                ] : [],
+                outputs: nodeStates.wallet === 'done' && preVetResult ? (
+                  address ? [
+                    { label: 'Wallet Age',   value: preVetResult.wallet_age_days  !== null ? `${preVetResult.wallet_age_days} days`         : '—', good: (preVetResult.wallet_age_days  ?? 0) > 30  },
+                    { label: 'Tx Count',     value: preVetResult.wallet_tx_count  !== null ? `${preVetResult.wallet_tx_count} transactions`  : '—', good: (preVetResult.wallet_tx_count  ?? 0) > 5   },
+                    { label: 'Blocklist',    value: preVetResult.wallet_on_blocklist === true ? 'Flagged' : 'Clean',                               good: !preVetResult.wallet_on_blocklist            },
+                    { label: 'Wallet Score', value: preVetResult.wallet_score  !== null ? `${Math.round((preVetResult.wallet_score  ?? 0) * 100)}%` : '—', good: (preVetResult.wallet_score  ?? 0) > 0.5 },
+                  ] : [
+                    { label: 'Wallet Status', value: 'Skipped (reputation check not performed)', good: true },
+                    { label: 'Wallet Score',  value: 'Neutral (0.5)', good: true },
+                  ]
+                ) : [],
                 scoring: 'Weight: 50% of final risk score. Age < 7 days or tx count < 2 adds risk.',
               },
               {
@@ -574,6 +601,68 @@ export default function CreatePage() {
                     Three independent checks run before you deploy — wallet reputation, content authenticity, and combined risk scoring.
                     Click <span className="font-semibold text-zinc-700">···</span> on any node to see exactly what data the flow is using.
                   </p>
+
+                  {/* Wallet status banner if not connected */}
+                  {!isConnected && (
+                    <div className="mt-4 p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-600">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-zinc-400 shrink-0" />
+                        <span>Wallet not connected. Connect your wallet to include on-chain reputation, or continue to review.</span>
+                      </div>
+                      {openConnectModal && (
+                        <button
+                          type="button"
+                          onClick={() => openConnectModal()}
+                          className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 shrink-0 transition-colors"
+                        >
+                          Connect Wallet
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Idle trigger card */}
+                  {preVetState === 'idle' && (
+                    <div className="mt-4 p-4 border border-zinc-200 rounded-xl bg-zinc-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-xs text-zinc-800">Ready to analyze campaign</div>
+                        <div className="text-[11px] text-zinc-500 mt-0.5">Run the AI checks now, or proceed straight to Review &amp; Deploy.</div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setStep(4)}
+                          className="px-3 py-1.5 text-xs text-zinc-600 hover:text-zinc-900 border border-zinc-200 rounded-lg bg-white"
+                        >
+                          Skip to Review
+                        </button>
+                        <button
+                          type="button"
+                          onClick={runPreVet}
+                          className="btn-primary px-3.5 py-1.5 text-xs flex items-center gap-1.5"
+                        >
+                          <Rocket className="w-3.5 h-3.5" /> Run Risk Check
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Running status notice */}
+                  {preVetState === 'running' && (
+                    <div className="mt-4 flex items-center justify-between p-3 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-500">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-900" />
+                        <span>Running AI risk analysis… (~5–10s)</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStep(4)}
+                        className="text-xs text-zinc-600 hover:text-zinc-900 underline"
+                      >
+                        Skip &amp; Continue
+                      </button>
+                    </div>
+                  )}
 
                   {/* Pipeline flow */}
                   <div className="mt-5 space-y-1">
@@ -964,16 +1053,28 @@ export default function CreatePage() {
           >
             <ChevronLeft className="w-4 h-4" /> Previous
           </button>
-          {/* Step 3 (AI Check) uses its own CTA buttons — hide generic Next */}
-          {step < STEPS.length - 1 && step !== 3 && (
-            <button
-              id="next-step"
-              onClick={() => setStep(s => s + 1)}
-              disabled={step === 0 ? !isStep0Valid : step === 1 ? !isStep1Valid : step === 2 ? !isStep2Valid : false}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              Next <ChevronRight className="w-4 h-4" />
-            </button>
+          {/* Step 3 (AI Check) uses its own CTA buttons when done/error, but provide Continue to Review if idle */}
+          {step < STEPS.length - 1 && (
+            step === 3 ? (
+              preVetState === 'idle' ? (
+                <button
+                  id="next-step-idle"
+                  onClick={() => setStep(4)}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  Continue to Review <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : null
+            ) : (
+              <button
+                id="next-step"
+                onClick={() => setStep(s => s + 1)}
+                disabled={step === 0 ? !isStep0Valid : step === 1 ? !isStep1Valid : step === 2 ? !isStep2Valid : false}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              >
+                Next <ChevronRight className="w-4 h-4" />
+              </button>
+            )
           )}
         </div>
       )}
